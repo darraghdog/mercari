@@ -1,0 +1,3 @@
+- Random tree embeddings
+- Read up on http://blog.kaggle.com/2016/05/18/home-depot-product-search-relevance-winners-interview-1st-place-alex-andreas-nurlan/
+
