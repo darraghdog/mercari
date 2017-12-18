@@ -189,7 +189,7 @@ def rmsle(y, y_pred):
               for i, pred in enumerate(y_pred)]
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
-dr = 0.1
+dr = 0.0
 
 def get_model():
     #Inputs
@@ -204,12 +204,10 @@ def get_model():
     
     #Embeddings layers
     emb_size = 60
-    shared_emb              = Embedding(MAX_TEXT, emb_size)
-    emb_name                = shared_emb(name) # , mask_zero=True
-    emb_item_desc           = shared_emb(item_desc) # , mask_zero=True#
-    emb_category_name_split = shared_emb(category_name_split) # , mask_zero=True#
     
-    #emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
+    emb_name = Embedding(MAX_TEXT, emb_size)(name) # , mask_zero=True
+    emb_item_desc = Embedding(MAX_TEXT, emb_size)(item_desc) # , mask_zero=True#
+    emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
     emb_brand = Embedding(MAX_BRAND, 8)(brand)
     emb_item_condition = Embedding(MAX_CONDITION, 5)(item_condition)
     
@@ -273,7 +271,7 @@ gc.collect()
 epochs = 3
 BATCH_SIZE = 512 * 4
 steps = int(len(X_train['name'])/BATCH_SIZE) * epochs
-lr_init = 0.012
+lr_init = 0.01
 
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
