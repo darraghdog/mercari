@@ -202,9 +202,6 @@ def get_model():
     item_desc = Input(shape=[X_train["item_desc"].shape[1]], name="item_desc")
     brand = Input(shape=[1], name="brand")
     category = Input(shape=[1], name="category")
-    cat1 = Input(shape=[1], name="cat1")
-    cat2 = Input(shape=[1], name="cat2")
-    cat3 = Input(shape=[1], name="cat3")
     category_name_split = Input(shape=[X_train["category_name_split"].shape[1]], 
                           name="category_name_split")
     item_condition = Input(shape=[1], name="item_condition")
@@ -217,25 +214,28 @@ def get_model():
     emb_item_desc = Embedding(MAX_TEXT, emb_size)(item_desc) # , mask_zero=True#
     emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
     emb_brand = Embedding(MAX_BRAND, 8)(brand)
-    emb_category = Embedding(MAX_CATEGORY, 12)(category)
-    emb_cat1 = Embedding(MAX_CAT1, 5)(cat1)
-    emb_cat2 = Embedding(MAX_CAT2, 8)(cat2)
-    emb_cat3 = Embedding(MAX_CAT3, 10)(cat3)
+    emb_category = Embedding(MAX_CATEGORY, 20)(category)
     emb_item_condition = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    conv1   = Conv1D(32, 5, activation='relu') (emb_item_desc)
-    conv1   = MaxPooling1D(5)(conv1)
-    conv1   = Conv1D(32, 5, activation='relu') (conv1)
-    conv1   = MaxPooling1D(5)(conv1)
-    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (conv1)
+    conv1   = Conv1D(16, 3, activation='relu', padding = "same") (emb_item_desc)
+    conv1   = MaxPooling1D(2)(conv1)
+    conv1   = Conv1D(32, 3, activation='relu', padding = "same") (conv1)
+    conv1   = MaxPooling1D(2)(conv1)
+    conv1   = Conv1D(32, 3, activation='relu', padding = "same") (conv1)
+    conv1   = MaxPooling1D(2)(conv1)
     
-    conv2   = Conv1D(32, 5, activation='relu') (emb_category_name_split)
-    conv2   = MaxPooling1D(5)(conv2)
-    rnn_layer2 = GRU(16, recurrent_dropout=0.0) (conv2)
+    conv2   = Conv1D(16, 3, activation='relu', padding = "same") (emb_category_name_split)
+    conv2   = MaxPooling1D(2)(conv2)    
+    conv2   = Conv1D(32, 3, activation='relu', padding = "same") (emb_category_name_split)
+    conv2   = MaxPooling1D(2)(conv2)
+    #rnn_layer2 = GRU(8, recurrent_dropout=0.0) (conv2)
     
-    conv3   = Conv1D(32, 5, activation='relu') (emb_name)
-    conv3   = MaxPooling1D(5)(conv3)
-    rnn_layer4 = GRU(16, recurrent_dropout=0.0) (conv3)
+    conv3   = Conv1D(16, 3, activation='relu', padding = "same") (emb_name)
+    conv3   = MaxPooling1D(2)(conv3)
+    conv3   = Conv1D(32, 3, activation='relu', padding = "same") (emb_name)
+    conv3   = MaxPooling1D(2)(conv3)
+    #rnn_layer3 = GRU(8, recurrent_dropout=0.0) (conv3)
+    rnn_layer3 = GRU(32, recurrent_dropout=0.0) (concatenate([conv3, conv2, conv1]))
         
     
     #rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
@@ -246,16 +246,14 @@ def get_model():
     main_l = concatenate([
         Flatten() (emb_brand)
         , Flatten() (emb_category)
-        , Flatten() (emb_cat1)
-        , Flatten() (emb_cat2)
-        , Flatten() (emb_cat3)
         , Flatten() (emb_item_condition)
-        , rnn_layer1
-    #    , rnn_layer2
+        #, rnn_layer1
+        #, rnn_layer2
         , rnn_layer3
-        , rnn_layer4
         , num_vars
-    ])
+    ])#, axis=1)
+    #conv4   = Conv1D(32, kernel_size=3, activation='relu') (main_l)
+    #main_l = Dropout(dr)(Dense(512,activation='relu') (conv4))
     main_l = Dropout(dr)(Dense(512,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
@@ -282,25 +280,16 @@ def eval_model(model, batch_size, epoch):
     print("Epoch ",str(epoch)," RMSLE error on dev test: "+str(v_rmsle))
     return v_rmsle
 
-exp_decay = lambda init, fin, steps: (init/fin)**(1/(steps-1)) - 1
-
 print('[{}] Finished DEFINEING MODEL...'.format(time.time() - start_time))
 
 gc.collect()
-epochs = 10
+epochs = 3
 BATCH_SIZE = 512 * 4
 steps = int(len(X_train['name'])/BATCH_SIZE) * epochs
-lr_init, lr_fin = 0.012, 0.008
-lr_decay = exp_decay(lr_init, lr_fin, steps)
-log_subdir = '_'.join(['ep', str(epochs),       
-                    'bs', str(BATCH_SIZE),
-                    'lrI', str(lr_init),
-                    'lrF', str(lr_fin),
-                    'dr', str(dr)])
+lr_init = 0.01
 
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
-K.set_value(model.optimizer.decay, lr_decay)
 
 for i in range(epochs):
     history = model.fit(X_train, dtrain.target
