@@ -3,14 +3,28 @@
 # mainly forking from notebook
 # https://www.kaggle.com/johnfarrell/simple-rnn-with-keras-script
 
-import os
-import gc
-import time
+import os, math, gc, time
 start_time = time.time()
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import tensorflow as tf
+from keras.preprocessing.text import Tokenizer
+def _get_session():
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
+    return tf.Session(config=config)
+_get_session()
+from keras.preprocessing.sequence import pad_sequences
+from sklearn.model_selection import train_test_split
+from keras.layers import Input, Dropout, Dense, BatchNormalization, \
+    Activation, concatenate, GRU, Embedding, Flatten, Bidirectional
+from keras.models import Model
+from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoard
+from keras import backend as K
+from keras import optimizers
+from keras import initializers
 
 os.chdir('/home/darragh/mercari/data')
 
@@ -65,33 +79,45 @@ train['brand'] = le.transform(train.brand_name)
 test['brand'] = le.transform(test.brand_name)
 del le, train['brand_name'], test['brand_name']
 
+# Replace the category slash
+test["category_name_split"] = test["category_name"].str.replace('/', ' ')
+train["category_name_split"] = train["category_name"].str.replace('/', ' ')
+train.head()
+
 print('[{}] Finished PROCESSING CATEGORICAL DATA...'.format(time.time() - start_time))
 train.head(3)
 
 #PROCESS TEXT: RAW
 print("Text to seq process...")
 print("   Fitting tokenizer...")
-from keras.preprocessing.text import Tokenizer
-raw_text = np.hstack([train.category_name.str.lower(), 
-                      train.item_description.str.lower(), 
-                      train.name.str.lower()])
+raw_text = np.hstack([train.category_name.str.lower().unique(), 
+                      train.category_name_split.str.lower().unique(), 
+                      train.item_description.str.lower().unique(), 
+                      train.name.str.lower().unique()])
 
 tok_raw = Tokenizer()
 tok_raw.fit_on_texts(raw_text)
 print("   Transforming text to seq...")
-train["seq_category_name"] = tok_raw.texts_to_sequences(train.category_name.str.lower())
-test["seq_category_name"] = tok_raw.texts_to_sequences(test.category_name.str.lower())
-train["seq_item_description"] = tok_raw.texts_to_sequences(train.item_description.str.lower())
-test["seq_item_description"] = tok_raw.texts_to_sequences(test.item_description.str.lower())
-train["seq_name"] = tok_raw.texts_to_sequences(train.name.str.lower())
-test["seq_name"] = tok_raw.texts_to_sequences(test.name.str.lower())
+
+tmp = tok_raw.texts_to_sequences(test.category_name_split.str.lower())
+def add_one(ll):
+    return [[1+i for i in l] for l in ll]
+    
+
+#train["seq_category_name"] = tok_raw.texts_to_sequences(train.category_name.str.lower())
+#test["seq_category_name"] = tok_raw.texts_to_sequences(test.category_name.str.lower())
+train["seq_category_name_split"] = tok_raw.texts_to_sequences(train.category_name_split.str.lower())
+test["seq_category_name_split"] =  tok_raw.texts_to_sequences(test.category_name_split.str.lower())
+train["seq_item_description"] =    tok_raw.texts_to_sequences(train.item_description.str.lower())
+test["seq_item_description"] =     tok_raw.texts_to_sequences(test.item_description.str.lower())
+train["seq_name"] =                tok_raw.texts_to_sequences(train.name.str.lower())
+test["seq_name"] =                 tok_raw.texts_to_sequences(test.name.str.lower())
 train.head(3)
 
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 
 #EXTRACT DEVELOPTMENT TEST
-from sklearn.model_selection import train_test_split
-dtrain, dvalid = train_test_split(train, random_state=233, train_size=0.99)
+dtrain, dvalid = train_test_split(train, random_state=233, train_size=0.90)
 print(dtrain.shape)
 print(dvalid.shape)
 
@@ -99,12 +125,18 @@ print(dvalid.shape)
 #EMBEDDINGS MAX VALUE
 #Base on the histograms, we select the next lengths
 MAX_NAME_SEQ = 20 #17
-MAX_ITEM_DESC_SEQ = 60 #269
+MAX_ITEM_DESC_SEQ = 80 #269
 MAX_CATEGORY_NAME_SEQ = 20 #8
+MAX_CATEGORY_NAME_SPLIT_SEQ = 20
+MAX_TEXT_CATEGORY_NAME = np.max([
+                   np.max(train.seq_category_name_split.max())
+                   , np.max(test.seq_category_name_split.max())])+2
 MAX_TEXT = np.max([np.max(train.seq_name.max())
                    , np.max(test.seq_name.max())
-                   , np.max(train.seq_category_name.max())
-                   , np.max(test.seq_category_name.max())
+                   #, np.max(train.seq_category_name.max())
+                   #, np.max(test.seq_category_name.max())
+                   , np.max(train.seq_category_name_split.max())
+                   , np.max(test.seq_category_name_split.max())
                    , np.max(train.seq_item_description.max())
                    , np.max(test.seq_item_description.max())])+2
 MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
@@ -116,8 +148,6 @@ MAX_CONDITION = np.max([train.item_condition_id.max(),
 print('[{}] Finished EMBEDDINGS MAX VALUE...'.format(time.time() - start_time))
 
 #KERAS DATA DEFINITION
-from keras.preprocessing.sequence import pad_sequences
-
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, maxlen=MAX_NAME_SEQ)
@@ -125,8 +155,10 @@ def get_keras_data(dataset):
                                     , maxlen=MAX_ITEM_DESC_SEQ)
         ,'brand': np.array(dataset.brand)
         ,'category': np.array(dataset.category)
-        ,'category_name': pad_sequences(dataset.seq_category_name
-                                        , maxlen=MAX_CATEGORY_NAME_SEQ)
+        #,'category_name': pad_sequences(dataset.seq_category_name
+        #                                , maxlen=MAX_CATEGORY_NAME_SEQ)
+        ,'category_name_split': pad_sequences(dataset.seq_category_name_split
+                                        , maxlen=MAX_CATEGORY_NAME_SPLIT_SEQ)
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
     }
@@ -139,50 +171,43 @@ X_test = get_keras_data(test)
 print('[{}] Finished DATA PREPARARTION...'.format(time.time() - start_time))
 
 #KERAS MODEL DEFINITION
-from keras.layers import Input, Dropout, Dense, BatchNormalization, \
-    Activation, concatenate, GRU, Embedding, Flatten
-from keras.models import Model
-from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoard
-from keras import backend as K
-from keras import optimizers
-from keras import initializers
-
 def rmsle(y, y_pred):
-    import math
     assert len(y) == len(y_pred)
     to_sum = [(math.log(y_pred[i] + 1) - math.log(y[i] + 1)) ** 2.0 \
               for i, pred in enumerate(y_pred)]
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
-dr = 0.25
+dr = 0.1
 
 def get_model():
     #params
     dr_r = dr
-    
+    def rmse(y_true, y_pred):
+        return K.sqrt(K.mean(K.square(y_pred - y_true), axis=-1)) 
+
     #Inputs
     name = Input(shape=[X_train["name"].shape[1]], name="name")
     item_desc = Input(shape=[X_train["item_desc"].shape[1]], name="item_desc")
     brand = Input(shape=[1], name="brand")
     category = Input(shape=[1], name="category")
-    category_name = Input(shape=[X_train["category_name"].shape[1]], 
-                          name="category_name")
+    category_name_split = Input(shape=[X_train["category_name_split"].shape[1]], 
+                          name="category_name_split")
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[X_train["num_vars"].shape[1]], name="num_vars")
     
     #Embeddings layers
     emb_size = 60
     
-    emb_name = Embedding(MAX_TEXT, emb_size//3, mask_zero=True)(name)
-    emb_item_desc = Embedding(MAX_TEXT, emb_size, mask_zero=True)(item_desc)
-    emb_category_name = Embedding(MAX_TEXT, emb_size//3, mask_zero=True)(category_name)
-    emb_brand = Embedding(MAX_BRAND, 10)(brand)
-    emb_category = Embedding(MAX_CATEGORY, 10)(category)
+    emb_name = Embedding(MAX_TEXT, emb_size)(name) # , mask_zero=True
+    emb_item_desc = Embedding(MAX_TEXT, emb_size)(item_desc) # , mask_zero=True#
+    emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
+    emb_brand = Embedding(MAX_BRAND, 30)(brand)
+    emb_category = Embedding(MAX_CATEGORY, 30)(category)
     emb_item_condition = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    rnn_layer1 = GRU(16) (emb_item_desc)
-    rnn_layer2 = GRU(8) (emb_category_name)
-    rnn_layer3 = GRU(8) (emb_name)
+    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
+    rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
+    rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_name)
     
     #main layer
     main_l = concatenate([
@@ -190,48 +215,48 @@ def get_model():
         , Flatten() (emb_category)
         , Flatten() (emb_item_condition)
         , rnn_layer1
-        , rnn_layer2
+    #    , rnn_layer2
         , rnn_layer3
+        , rnn_layer4
         , num_vars
     ])
-    main_l = Dropout(0.1)(Dense(512,activation='relu') (main_l))
-    main_l = Dropout(0.1)(Dense(64,activation='relu') (main_l))
+    main_l = Dropout(dr)(Dense(512,activation='relu') (main_l))
+    main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
     #output
     output = Dense(1,activation="linear") (main_l)
     
     #model
     model = Model([name, item_desc, brand
-                   , category, category_name
+                   , category, category_name_split# category_name, 
                    , item_condition, num_vars], output)
     #optimizer = optimizers.RMSprop()
     optimizer = optimizers.Adam()
-    model.compile(loss="mse", 
+    model.compile(loss='mse', 
                   optimizer=optimizer)
     return model
 
-def eval_model(model):
-    val_preds = model.predict(X_valid)
+def eval_model(model, batch_size, epoch):
+    val_preds = model.predict(X_valid, batch_size=batch_size)
     val_preds = np.expm1(val_preds)
     
     y_true = np.array(dvalid.price.values)
     y_pred = val_preds[:, 0]
     v_rmsle = rmsle(y_true, y_pred)
-    print(" RMSLE error on dev test: "+str(v_rmsle))
+    print("Epoch ",str(epoch)," RMSLE error on dev test: "+str(v_rmsle))
     return v_rmsle
-#fin_lr=init_lr * (1/(1+decay))**(steps-1)
+
 exp_decay = lambda init, fin, steps: (init/fin)**(1/(steps-1)) - 1
 
 print('[{}] Finished DEFINEING MODEL...'.format(time.time() - start_time))
 
 gc.collect()
-#FITTING THE MODEL
-epochs = 2
-BATCH_SIZE = 512 * 3
+epochs = 10
+BATCH_SIZE = 512 * 8
 steps = int(len(X_train['name'])/BATCH_SIZE) * epochs
-lr_init, lr_fin = 0.013, 0.009
+lr_init, lr_fin = 0.012, 0.008
 lr_decay = exp_decay(lr_init, lr_fin, steps)
-log_subdir = '_'.join(['ep', str(epochs),
+log_subdir = '_'.join(['ep', str(epochs),       
                     'bs', str(BATCH_SIZE),
                     'lrI', str(lr_init),
                     'lrF', str(lr_fin),
@@ -241,17 +266,24 @@ model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
 K.set_value(model.optimizer.decay, lr_decay)
 
-history = model.fit(X_train, dtrain.target
-                    , epochs=epochs
-                    , batch_size=BATCH_SIZE
-                    , validation_split=0.01
-                    #, callbacks=[TensorBoard('./logs/'+log_subdir)]
-                    , verbose=10
-                    )
+for i in range(epochs):
+    history = model.fit(X_train, dtrain.target
+                        , epochs=1#epochs
+                        , batch_size=BATCH_SIZE
+                        #, validation_split=0.1
+                        #, callbacks=[TensorBoard('./logs/'+log_subdir)]
+                        , validation_data = (X_valid, dvalid.target)
+                        , verbose=1
+                        )
+    v_rmsle = eval_model(model, batch_size=BATCH_SIZE, epoch = i)
+    # Baseline @20epochs -- val_loss: 0.2190; RMSLE error on dev test: 0.4679
+    # Baseline @8epochs,dr0.3 -- val_loss: 0.2057; RMSLE error on dev test: 0.4535
+    # Baseline @8epochs,dr0.3,3xemb -- val_loss: 0.1942; RMSLE error on dev test: 0.4406
+    # Baseline @8epochs,dr0.4,3xemb, properseq -- val_loss: 0.1898; RMSLE error on dev test: 0.4356
+    # Baseline @8epochs,dr0.2,3xemb, properseq -- val_loss: 0.1896; RMSLE error on dev test: 0.4353
+    #EVLUEATE THE MODEL ON DEV TEST
+
 print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
-#EVLUEATE THE MODEL ON DEV TEST
-v_rmsle = eval_model(model)
-print('[{}] Finished predicting valid set...'.format(time.time() - start_time))
 
 #CREATE PREDICTIONS
 preds = model.predict(X_test, batch_size=BATCH_SIZE)
