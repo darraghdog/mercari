@@ -26,6 +26,7 @@ from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoa
 from keras import backend as K
 from keras import optimizers
 from keras import initializers
+from keras.utils import plot_model
 
 os.chdir('/home/darragh/mercari/data')
 
@@ -252,7 +253,7 @@ def get_model():
         , Flatten() (emb_item_condition)
         , rnn_layer1
     #    , rnn_layer2
-        , rnn_layer3
+        , rnn_layer2
         , rnn_layer4
         , num_vars
     ])
@@ -299,6 +300,9 @@ log_subdir = '_'.join(['ep', str(epochs),
                     'dr', str(dr)])
 
 model = get_model()
+import pydot
+plot_model(model, to_file='../model_rnn.png', show_shapes= True)
+os.getcwd()
 K.set_value(model.optimizer.lr, lr_init)
 K.set_value(model.optimizer.decay, lr_decay)
 
