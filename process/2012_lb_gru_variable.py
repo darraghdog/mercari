@@ -26,6 +26,7 @@ from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoa
 from keras import backend as K
 from keras import optimizers
 from keras import initializers
+from keras.utils import plot_model
 
 os.chdir('/home/darragh/mercari/data')
 
@@ -132,7 +133,8 @@ print(dvalid.shape)
 MAX_NAME_SEQ = 20 #17
 MAX_ITEM_DESC_SEQ = 80 #269
 MAX_CATEGORY_NAME_SEQ = 20 #8
-MAX_CATEGORY_NAME_SPLIT_SEQ = 20
+MAX_CATEGORY_NAME_SPLIT_SEQ = 8
+max([len(l) for l in train.seq_category_name_split])
 MAX_TEXT_CATEGORY_NAME = np.max([
                    np.max(train.seq_category_name_split.max())
                    , np.max(test.seq_category_name_split.max())])+2
@@ -189,16 +191,16 @@ def rmsle(y, y_pred):
               for i, pred in enumerate(y_pred)]
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
-dr = 0.2
+dr = 0.1
 
 def get_model():
-    #Inputs
-    name = Input(shape=[X_train["name"].shape[1]], name="name")
-    item_desc = Input(shape=[X_train["item_desc"].shape[1]], name="item_desc")
+
+    ##Inputs
+    name = Input(shape=[None], name="name")
+    item_desc = Input(shape=[None], name="item_desc")
+    category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
-    #category = Input(shape=[1], name="category")
-    category_name_split = Input(shape=[X_train["category_name_split"].shape[1]], 
-                          name="category_name_split")
+    category = Input(shape=[1], name="category")
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[X_train["num_vars"].shape[1]], name="num_vars")
     
@@ -209,47 +211,33 @@ def get_model():
     emb_item_desc = Embedding(MAX_TEXT, emb_size)(item_desc) # , mask_zero=True#
     emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
     emb_brand = Embedding(MAX_BRAND, 8)(brand)
+    emb_category = Embedding(MAX_CATEGORY, 12)(category)
     emb_item_condition = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    conv1   = Conv1D(16, 3, activation='relu', padding = "same") (emb_item_desc)
-    conv1   = MaxPooling1D(2)(conv1)
-    conv1   = Conv1D(32, 3, activation='relu', padding = "same") (conv1)
-    conv1   = MaxPooling1D(2)(conv1)
-    conv1   = Conv1D(32, 3, activation='relu', padding = "same") (conv1)
-    conv1   = MaxPooling1D(2)(conv1)
+    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
+    rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
+    rnn_layer3 = GRU(16, recurrent_dropout=0.0) (emb_name)
     
-    conv2   = Conv1D(16, 3, activation='relu', padding = "same") (emb_category_name_split)
-    conv2   = MaxPooling1D(2)(conv2)    
-    conv2   = Conv1D(32, 3, activation='relu', padding = "same") (conv2)
-    #conv2   = MaxPooling1D(2)(conv2)
-    
-    conv3   = Conv1D(16, 3, activation='relu', padding = "same") (emb_name)
-    conv3   = MaxPooling1D(2)(conv3)
-    conv3   = Conv1D(32, 3, activation='relu', padding = "same") (conv3)
-    #conv3   = MaxPooling1D(2)(conv3)
-    rnn_layer3 = GRU(32, recurrent_dropout=0.0) (concatenate([conv3, conv2, conv1]))
-        
     #main layer
     main_l = concatenate([
         Flatten() (emb_brand)
-        #, Flatten() (emb_category)
+        , Flatten() (emb_category)
         , Flatten() (emb_item_condition)
-        #, rnn_layer1
-        #, rnn_layer2
+        , rnn_layer1
+        , rnn_layer2
         , rnn_layer3
         , num_vars
     ])
     main_l = Dropout(dr)(Dense(512,activation='relu') (main_l))
-    main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
+    #main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
     #output
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, item_desc, brand#, cat1, cat2, cat3
-                   , category_name_split# category_name, category, 
+    model = Model([name, item_desc, brand
+                   , category, category_name_split
                    , item_condition, num_vars], output)
-    #optimizer = optimizers.RMSprop()
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
                   optimizer=optimizer)
@@ -265,15 +253,20 @@ def eval_model(model, batch_size, epoch):
     print("Epoch ",str(epoch)," RMSLE error on dev test: "+str(v_rmsle))
     return v_rmsle
 
+exp_decay = lambda init, fin, steps: (init/fin)**(1/(steps-1)) - 1
+
 print('[{}] Finished DEFINEING MODEL...'.format(time.time() - start_time))
 
 gc.collect()
 epochs = 3
 BATCH_SIZE = 512 * 4
-steps = int(len(X_train['name'])/BATCH_SIZE) * epochs
-lr_init = 0.01
+steps = 3
+lr_init = 0.012
 
 model = get_model()
+#import pydot
+#plot_model(model, to_file='../model_rnn.png', show_shapes= True)
+os.getcwd()
 K.set_value(model.optimizer.lr, lr_init)
 
 for i in range(epochs):

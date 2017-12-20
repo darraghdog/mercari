@@ -26,6 +26,7 @@ from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoa
 from keras import backend as K
 from keras import optimizers
 from keras import initializers
+from keras.utils import plot_model
 
 os.chdir('/home/darragh/mercari/data')
 
@@ -189,16 +190,20 @@ def rmsle(y, y_pred):
               for i, pred in enumerate(y_pred)]
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
-dr = 0.2
+dr = 0.1
 
 def get_model():
     #Inputs
     name = Input(shape=[X_train["name"].shape[1]], name="name")
+    #name = Input(shape=[None], name="name")
     item_desc = Input(shape=[X_train["item_desc"].shape[1]], name="item_desc")
+    #item_desc = Input(shape=[None], name="item_desc")
     brand = Input(shape=[1], name="brand")
     #category = Input(shape=[1], name="category")
     category_name_split = Input(shape=[X_train["category_name_split"].shape[1]], 
                           name="category_name_split")
+    #category_name_split = Input(shape=[None], 
+    #                      name="category_name_split")
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[X_train["num_vars"].shape[1]], name="num_vars")
     
@@ -275,6 +280,9 @@ lr_init = 0.01
 
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
+
+import pydot
+plot_model(model, to_file='../model_conv1d.png', show_shapes= True)
 
 for i in range(epochs):
     history = model.fit(X_train, dtrain.target
