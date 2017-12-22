@@ -3,7 +3,7 @@
 # mainly forking from notebook
 # https://www.kaggle.com/johnfarrell/simple-rnn-with-keras-script
 
-import os, math, gc, time, random
+import os, math, gc, time
 start_time = time.time()
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ from keras import optimizers
 from keras import initializers
 from keras.utils import plot_model
 
-# os.chdir('/home/darragh/mercari/data')
+#os.chdir('/home/darragh/mercari/data')
 os.chdir('/Users/dhanley2/Documents/mercari/data')
 
 
@@ -38,7 +38,7 @@ test = pd.read_csv('../data/test.tsv', sep='\t')
 train['target'] = np.log1p(train['price'])
 print(train.shape)
 print(test.shape)
-print('[{}] Finished scaling test set...'.format(time.time() - start_time))
+test_len = test.shape[0]
 
 
 #HANDLE MISSING VALUES
@@ -53,6 +53,7 @@ train = handle_missing(train)
 test = handle_missing(test)
 print(train.shape)
 print(test.shape)
+
 print('[{}] Finished handling missing data...'.format(time.time() - start_time))
 
 
@@ -101,6 +102,13 @@ train["seq_item_description"] =    tok_raw.texts_to_sequences(train.item_descrip
 test["seq_item_description"] =     tok_raw.texts_to_sequences(test.item_description.str.lower())
 train["seq_name"] =                tok_raw.texts_to_sequences(train.name.str.lower())
 test["seq_name"] =                 tok_raw.texts_to_sequences(test.name.str.lower())
+for col in ['cat1','cat2', 'cat3']:
+    le = LabelEncoder()
+    le.fit(train[col].unique().tolist() + test[col].unique().tolist())    
+    train[col] = le.transform(train[col].tolist())
+    test[col] = le.transform(test[col].tolist())
+
+
 
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 
@@ -115,8 +123,7 @@ print(dvalid.shape)
 MAX_NAME_SEQ = 20 #17
 MAX_ITEM_DESC_SEQ = 80 #269
 MAX_CATEGORY_NAME_SEQ = 20 #8
-MAX_CATEGORY_NAME_SPLIT_SEQ = 8
-max([len(l) for l in train.seq_category_name_split])
+MAX_CATEGORY_NAME_SPLIT_SEQ = 20
 MAX_TEXT_CATEGORY_NAME = np.max([
                    np.max(train.seq_category_name_split.max())
                    , np.max(test.seq_category_name_split.max())])+2
@@ -133,25 +140,38 @@ MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
 MAX_CONDITION = np.max([train.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
 
+MAX_CAT1 = np.max([train.cat1.max(), test.cat1.max()])+1
+MAX_CAT2 = np.max([train.cat2.max(), test.cat2.max()])+1
+MAX_CAT3 = np.max([train.cat3.max(), test.cat3.max()])+1
+    
 
-print('[{}] Finished EMBEDDINGS MAX VALUE...'.format(time.time() - start_time)) 
+print('[{}] Finished EMBEDDINGS MAX VALUE...'.format(time.time() - start_time))
 
-# Sort the data on the length of the descriptions which will make it quicker
-# for the variable length GRU
-def len_argsort(seq):
-	return sorted(range(len(seq)), key=lambda x: len(seq[x]))
-trn_sorted_ix = len_argsort(dtrain["seq_item_description"].tolist())
-val_sorted_ix = len_argsort(dvalid["seq_item_description"].tolist())
-tst_sorted_ix = len_argsort(test["seq_item_description"].tolist())
+#KERAS DATA DEFINITION
+def get_keras_data(dataset):
+    X = {
+        'name': pad_sequences(dataset.seq_name, maxlen=MAX_NAME_SEQ)
+        ,'item_desc': pad_sequences(dataset.seq_item_description
+                                    , maxlen=MAX_ITEM_DESC_SEQ)
+        ,'brand': np.array(dataset.brand)
+        ,'category': np.array(dataset.category)
+        ,'cat1': np.array(dataset.cat1)
+        ,'cat2': np.array(dataset.cat2)
+        ,'cat3': np.array(dataset.cat3)
+        #,'category_name': pad_sequences(dataset.seq_category_name
+        #                                , maxlen=MAX_CATEGORY_NAME_SEQ)
+        ,'category_name_split': pad_sequences(dataset.seq_category_name_split
+                                        , maxlen=MAX_CATEGORY_NAME_SPLIT_SEQ)
+        ,'item_condition': np.array(dataset.item_condition_id)
+        ,'num_vars': np.array(dataset[["shipping"]])
+    }
+    return X
 
-#import matplotlib.pyplot as plt
-#plt.hist(np.array([len(l) for l in train["seq_item_description"]]), bins='auto')  # arguments are passed to np.histogram
-#plt.title("Histogram with 'auto' bins")
-#plt.show()
+X_train = get_keras_data(dtrain)
+X_valid = get_keras_data(dvalid)
+X_test = get_keras_data(test)
 
-print('[{}] Sort the data to make more efficient variable length...'.format(time.time() - start_time))
-
-batchSize = 512
+print('[{}] Finished DATA PREPARARTION...'.format(time.time() - start_time))
 
 #KERAS MODEL DEFINITION
 def rmsle(y, y_pred):
@@ -163,15 +183,23 @@ def rmsle(y, y_pred):
 dr = 0.1
 
 def get_model():
+    #params
+    dr_r = dr
+    def rmse(y_true, y_pred):
+        return K.sqrt(K.mean(K.square(y_pred - y_true), axis=-1)) 
 
-    ##Inputs
-    name = Input(shape=[None], name="name")
-    item_desc = Input(shape=[None], name="item_desc")
-    category_name_split = Input(shape=[None], name="category_name_split")
+    #Inputs
+    name = Input(shape=[X_train["name"].shape[1]], name="name")
+    item_desc = Input(shape=[X_train["item_desc"].shape[1]], name="item_desc")
     brand = Input(shape=[1], name="brand")
     category = Input(shape=[1], name="category")
+    cat1 = Input(shape=[1], name="cat1")
+    cat2 = Input(shape=[1], name="cat2")
+    cat3 = Input(shape=[1], name="cat3")
+    category_name_split = Input(shape=[X_train["category_name_split"].shape[1]], 
+                          name="category_name_split")
     item_condition = Input(shape=[1], name="item_condition")
-    num_vars = Input(shape=[1], name="num_vars")
+    num_vars = Input(shape=[X_train["num_vars"].shape[1]], name="num_vars")
     
     #Embeddings layers
     emb_size = 60
@@ -181,32 +209,55 @@ def get_model():
     emb_category_name_split = Embedding(MAX_TEXT, emb_size//3)(category_name_split) # , mask_zero=True
     emb_brand = Embedding(MAX_BRAND, 8)(brand)
     emb_category = Embedding(MAX_CATEGORY, 12)(category)
+    emb_cat1 = Embedding(MAX_CAT1, 5)(cat1)
+    emb_cat2 = Embedding(MAX_CAT2, 8)(cat2)
+    emb_cat3 = Embedding(MAX_CAT3, 10)(cat3)
     emb_item_condition = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
-    rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
-    rnn_layer3 = GRU(16, recurrent_dropout=0.0) (emb_name)
+    conv1   = Conv1D(32, 5, activation='relu') (emb_item_desc)
+    conv1   = MaxPooling1D(5)(conv1)
+    conv1   = Conv1D(32, 5, activation='relu') (conv1)
+    conv1   = MaxPooling1D(5)(conv1)
+    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (conv1)
+    
+    conv2   = Conv1D(32, 5, activation='relu') (emb_category_name_split)
+    conv2   = MaxPooling1D(5)(conv2)
+    rnn_layer2 = GRU(16, recurrent_dropout=0.0) (conv2)
+    
+    conv3   = Conv1D(32, 5, activation='relu') (emb_name)
+    conv3   = MaxPooling1D(5)(conv3)
+    rnn_layer4 = GRU(16, recurrent_dropout=0.0) (conv3)
+        
+    
+    #rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
+    #rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
+    #rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_name)
     
     #main layer
     main_l = concatenate([
         Flatten() (emb_brand)
         , Flatten() (emb_category)
+        , Flatten() (emb_cat1)
+        , Flatten() (emb_cat2)
+        , Flatten() (emb_cat3)
         , Flatten() (emb_item_condition)
         , rnn_layer1
+    #    , rnn_layer2
         , rnn_layer2
-        , rnn_layer3
+        , rnn_layer4
         , num_vars
     ])
     main_l = Dropout(dr)(Dense(512,activation='relu') (main_l))
-    #main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
+    main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
     #output
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, item_desc, brand
-                   , category, category_name_split
+    model = Model([name, item_desc, brand, cat1, cat2, cat3
+                   , category, category_name_split# category_name, 
                    , item_condition, num_vars], output)
+    #optimizer = optimizers.RMSprop()
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
                   optimizer=optimizer)
@@ -227,101 +278,40 @@ exp_decay = lambda init, fin, steps: (init/fin)**(1/(steps-1)) - 1
 print('[{}] Finished DEFINEING MODEL...'.format(time.time() - start_time))
 
 gc.collect()
-epochs = 3
+epochs = 10
 BATCH_SIZE = 512 * 4
-steps = 3
-lr_init = 0.012
+steps = int(len(X_train['name'])/BATCH_SIZE) * epochs
+lr_init, lr_fin = 0.012, 0.008
+lr_decay = exp_decay(lr_init, lr_fin, steps)
+log_subdir = '_'.join(['ep', str(epochs),       
+                    'bs', str(BATCH_SIZE),
+                    'lrI', str(lr_init),
+                    'lrF', str(lr_fin),
+                    'dr', str(dr)])
 
 model = get_model()
-#import pydot
-#plot_model(model, to_file='../model_rnn.png', show_shapes= True)
+import pydot
+plot_model(model, to_file='../model_rnn.png', show_shapes= True)
 os.getcwd()
 K.set_value(model.optimizer.lr, lr_init)
+K.set_value(model.optimizer.decay, lr_decay)
 
-
-def get_keras_data(dataset):
-    X = {
-        'name': pad_sequences(dataset.seq_name, 
-                              maxlen=max([len(l) for l in dataset.seq_name]))
-        ,'item_desc': pad_sequences(dataset.seq_item_description, 
-                              maxlen=max([len(l) for l in dataset.seq_item_description]))
-        ,'brand': np.array(dataset.brand)
-        ,'category': np.array(dataset.category)
-        ,'cat1': np.array(dataset.cat1)
-        ,'cat2': np.array(dataset.cat2)
-        ,'cat3': np.array(dataset.cat3)
-        #,'category_name': pad_sequences(dataset.seq_category_name
-        #                                , maxlen=MAX_CATEGORY_NAME_SEQ)
-        ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
-                              maxlen=max([len(l) for l in dataset.seq_category_name_split]))
-        ,'item_condition': np.array(dataset.item_condition_id)
-        ,'num_vars': np.array(dataset[["shipping"]])
-    }
-    return X   
-
-def reset_data(dt, batchSize):
-    max_step = dt.shape[0]
-    n_batches = int(np.ceil(dt.shape[0] *1. / float(batchSize)))
-    batch_steps = np.array(random.sample(range(n_batches), n_batches))
-    sorted_ix = np.array(len_argsort(dt["seq_item_description"].tolist()))
-    dt.reset_index(drop=True, inplace = True)  
-    return max_step, batch_steps, sorted_ix, dt
-
-def trn_generator(dt, y, batchSize = 512*4):
-    max_step, batch_steps, sorted_ix, dt = reset_data(dt, batchSize)
-    i = 0 
-    while 1:
-        from_ = batch_steps[i]*batchSize
-        to_   = min((batch_steps[i]+1)*batchSize, max_step)
-        ix_   = sorted_ix[from_:to_]
-        Xbatch = dt.iloc[ix_]
-        Xbatch = get_keras_data(Xbatch)
-        ybatch = dt.target.iloc[ix_]
-        i+=1
-        yield Xbatch, ybatch
-
-def val_generator(dt, y, batchSize = 512*4):
-    max_step, batch_steps, sorted_ix, dt = reset_data(dt, y, batchSize)
-    i = 0 
-    while 1:
-        from_ = batch_steps[i]*batchSize
-        to_   = min((batch_steps[i]+1)*batchSize, max_step)
-        ix_   = sorted_ix[from_:to_]
-        Xbatch = dt.iloc[ix_]
-        Xbatch = get_keras_data(Xbatch)
-        ybatch = dt.target.iloc[ix_]
-        i+=1
-        yield Xbatch, ybatch
-
-def tst_generator(dt, batchSize = 512*4):
-    max_step, batch_steps, sorted_ix, dt = reset_data(dt, batchSize)
-    i = 0 
-    while 1:
-        from_ = batch_steps[i]*batchSize
-        to_   = min((batch_steps[i]+1)*batchSize, max_step)
-        ix_   = sorted_ix[from_:to_]
-        X_batch = dt.iloc[ix_]
-        X_batch = get_keras_data(X_batch)
-        i+=1
-        yield X_batch
-
-batchSize = 512*4
-batchSize_test = 512*16
-history = model.fit_generator(
-                    trn_generator(dtrain, dtrain.target, batchSize)
-                    , epochs=3
-                    , steps_per_epoch = dtrain.shape[0]/batchSize
-                    , validation_data = val_generator(dvalid, dvalid.target, batchSize_test)
-                    , validation_steps = dvalid.shape[0]/batchSize_test
-                    , verbose=1
-                    )
-
-y_pred = model.predict_generator(tst_generator(test, batchSize_test), 
-                         steps = test.shape[0]/batchSize_test, 
-                         verbose=1)
-
-print(y_pred.shape)
-print()
+for i in range(epochs):
+    history = model.fit(X_train, dtrain.target
+                        , epochs=1#epochs
+                        , batch_size=BATCH_SIZE
+                        #, validation_split=0.1
+                        #, callbacks=[TensorBoard('./logs/'+log_subdir)]
+                        , validation_data = (X_valid, dvalid.target)
+                        , verbose=1
+                        )
+    v_rmsle = eval_model(model, batch_size=BATCH_SIZE, epoch = i)
+    # Baseline @20epochs -- val_loss: 0.2190; RMSLE error on dev test: 0.4679
+    # Baseline @8epochs,dr0.3 -- val_loss: 0.2057; RMSLE error on dev test: 0.4535
+    # Baseline @8epochs,dr0.3,3xemb -- val_loss: 0.1942; RMSLE error on dev test: 0.4406
+    # Baseline @8epochs,dr0.4,3xemb, properseq -- val_loss: 0.1898; RMSLE error on dev test: 0.4356
+    # Baseline @8epochs,dr0.2,3xemb, properseq -- val_loss: 0.1896; RMSLE error on dev test: 0.4353
+    #EVLUEATE THE MODEL ON DEV TEST
 
 print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
 
