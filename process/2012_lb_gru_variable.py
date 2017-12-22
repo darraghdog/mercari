@@ -316,8 +316,10 @@ history = model.fit_generator(
                     , verbose=1
                     )
 
+tst_generator(test, batchSize_test).next()
+
 y_pred = model.predict_generator(tst_generator(test, batchSize_test), 
-                         steps = test.shape[0]/batchSize_test, 
+                         steps = 100,#test.shape[0]/batchSize_test, 
                          verbose=1)
 
 print(y_pred.shape)
