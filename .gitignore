@@ -1,3 +1,6 @@
+feat/*vec
+feat/*txt
+feat/*zip
 sub/*
 data/*
 feat/glove*

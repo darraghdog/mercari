@@ -12,6 +12,7 @@ from csv import DictReader
 from math import exp, log, sqrt
 start_time = time.time()
 import numpy as np
+import re 
 from numba import jit
 from collections import Counter
 from scipy.sparse import csr_matrix, hstack
@@ -55,6 +56,34 @@ print(test.shape)
 print('[{}] Finished scaling test set...'.format(time.time() - start_time))
 
 
+print("Remove bogus characters...")
+@jit
+def get_characters():
+    characters = set()
+    for sent in train.name.unique():
+        for s in sent:
+            characters.add(s)
+    return characters
+all_chars = sorted(list(get_characters()))
+"".join(all_chars)
+
+#text = u'This dog \uc758\uc774\uc8fd\ud55c\ud589\ud654\uf8ff\ufe0e \x96\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa9'
+#print(text) # with emoji
+# https://stackoverflow.com/questions/33404752/removing-emojis-from-a-string-in-python
+special_pattern = re.compile( 
+    u"([\u0101-\ufffd])"  
+    #u"([\\x96-\xfc])" 
+    "+", flags=re.UNICODE)
+#print(special_pattern.sub(r'', text)) # no emoji
+
+
+for col in ["item_description", "name", "brand_name"]:
+    print("Clean special characters from " + col)
+    train[col] = [(special_pattern.sub(r'', sent)) if sent == sent else sent for sent in train[col].values]
+    test[col] = [(special_pattern.sub(r'', sent)) if sent == sent else sent for sent in test[col].values]
+
+print('[{}] Finished remove bogus characters...'.format(time.time() - start_time))
+
 #HANDLE MISSING VALUES
 print("Handling missing values...")
 def handle_missing(dataset):
@@ -84,7 +113,7 @@ test['category'] = le.transform(test.category_name)
 
 
 hi_brand_cts = train['brand_name'].value_counts()
-hi_brand_cts = hi_brand_cts[hi_brand_cts>5].index.values
+hi_brand_cts = hi_brand_cts[hi_brand_cts>2].index.values
 train.brand_name[~train.brand_name.isin(hi_brand_cts)] = '_lo_count_'
 test.brand_name[~test.brand_name.isin(hi_brand_cts)] = '_lo_count_'
 le.fit(np.hstack([train.brand_name, test.brand_name]))
@@ -104,6 +133,8 @@ print('[{}] Finished PROCESSING CATEGORICAL DATA...'.format(time.time() - start_
 toktok = ToktokTokenizer()
 train['name_token'] = [" ".join(toktok.tokenize(sent)) for sent in train['name'].str.lower().tolist()]
 test['name_token'] = [" ".join(toktok.tokenize(sent)) for sent in test['name'].str.lower().tolist()]
+#train['item_description_token'] = [" ".join(toktok.tokenize(sent[:400])) for sent in train['item_description'].str.lower().tolist()]
+#test['item_description_token'] = [" ".join(toktok.tokenize(sent[:400])) for sent in test['item_description'].str.lower().tolist()]
 print('[{}] Finished Tokenizing text...'.format(time.time() - start_time))
 
 
@@ -146,6 +177,7 @@ def fit_sequence(str_, tkn_, filt = True):
 tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), max_words = 200)
 tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000)
 tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
+tok_raw_dtk = myTokenizerFit(train.item_description_token.str.lower().unique(), max_words = 50000)
 tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 50000)
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))
 print("   Transforming text to seq...")
@@ -264,9 +296,6 @@ def rmsle(y, y_pred):
 
 dr = 0.1
 
-from keras.layers import GlobalMaxPooling1D
-
-
 def get_model():
 
     ##Inputs
@@ -328,7 +357,7 @@ model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
 K.set_value(model.optimizer.decay, lr_decay)
 
-history = model.fit_generator(
+model.fit_generator(
                     trn_generator(dtrain, dtrain.target, batchSize)
                     , epochs=epochs
                     , max_queue_size=1
@@ -338,16 +367,36 @@ history = model.fit_generator(
                     , verbose=1
                     )
 val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
-y_pred = model.predict_generator(tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
+y_pred1 = model.predict_generator(tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
                     , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
                     , max_queue_size=1 
                     , verbose=1)[val_sorted_ix.argsort()]
-print "Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred))
+print("Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred1)))
+
+
+K.set_value(model.optimizer.decay, 0.09)
+model.fit_generator(
+                    trn_generator(dtrain, dtrain.target, batchSize)
+                    , epochs=1#,epochs
+                    , max_queue_size=1
+                    , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
+                    , validation_data = val_generator(dvalid, dvalid.target, batchSize)
+                    , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , verbose=1
+                    )
+y_pred2 = model.predict_generator(tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
+                    , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , max_queue_size=1 
+                    , verbose=1)[val_sorted_ix.argsort()]
+y_pred = 0.5*(y_pred1+y_pred2)
+print("Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred2)))
+print("Bagged Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred)))
 
 
 '''
 Start the lightgbm
 '''
+train.head()
 
 import lightgbm as lgb
 
@@ -364,7 +413,8 @@ def col2sparse(var, max_col):
     return csr_matrix((data, (row, col)), shape=shape_)
 
 llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
-          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
+          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK), \
+          ("seq_item_description_token", MAX_DTK)]
 lcols = ["brand", "item_condition_id", "shipping", "category"]
 
 spmatval = hstack([col2sparse(dvalid[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
@@ -374,8 +424,39 @@ spmattrn = hstack([col2sparse(dtrain[c_].tolist(), max_col = max_val) for (c_, m
                   [col2sparse([[l] for l in dtrain[c_].tolist()], \
                                max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
 
-spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1))])
-spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1))])
+# Feature Engineering - Bayes Mean and count
+n_folds = 2 
+folds = np.array([random.randint(1,n_folds) for i in range(dtrain.shape[0])])
+
+def bayesMean(dt_in, dt_out, t_col = "brand", y_col = "target"):
+    mean_dict  = pd.groupby(dt_in[[t_col, y_col]], t_col).mean().to_dict()[y_col]
+    ct_dict   = pd.groupby(dt_in[[t_col, y_col]], t_col).count().to_dict()[y_col]
+    glbmean  = dt_in[y_col].values.mean()
+    def bMeanSngl(vc, vm, glbmean = glbmean, prior = 5):
+        return ((vc*vm)+(prior*glbmean))/(vc+prior)
+    bmean_dict = dict((kc, bMeanSngl(vc, vm)) for ((kc, vc), (km, vm)) in \
+                      zip(ct_dict.iteritems(), mean_dict.iteritems()))
+    out = dt_out[t_col].apply(lambda x : bmean_dict.get(x, glbmean)).values
+    return out
+
+dtrain.head()
+bcols = ["brand", "category"]
+trn_bayes_mean = np.zeros((dtrain.shape[0], len(bcols)), dtype=float)
+val_bayes_mean = np.zeros((dvalid.shape[0], len(bcols)), dtype=float)
+tst_bayes_mean = np.zeros((test.shape[0], len(bcols)), dtype=float)
+
+# Fill in out training set
+for i in range(len(bcols)):
+    for f in range(n_folds):
+        idx_ = folds == 1+f
+        trn_bayes_mean[~idx_, i] = bayesMean(dtrain[idx_], dtrain[~idx_], t_col = bcols[i])
+# Now fill in valid and test set
+for i in range(len(bcols)):
+    val_bayes_mean[:, i] = bayesMean(dtrain, dvalid, t_col = bcols[i])
+    tst_bayes_mean[:, i] = bayesMean(dtrain, test, t_col = bcols[i])
+
+spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean)])
+spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean)])
 
 
 d_train = lgb.Dataset(spmattrn, label=dtrain.target)#, max_bin=8192)
@@ -392,18 +473,18 @@ params = {
     'nthread': 4
 }
 
-model = lgb.train(params, train_set=d_train, num_boost_round=7500, valid_sets=watchlist, \
+modellgb = lgb.train(params, train_set=d_train, num_boost_round=7500, valid_sets=watchlist, \
 early_stopping_rounds=500, verbose_eval=10) 
-#[4000]  training's rmse: 0.427902       valid_1's rmse: 0.45261
-#[7080]  training's rmse: 0.4108 valid_1's rmse: 0.447027
-y_predlgb = model.predict(spmatval)
+#[4000]  training's rmse: 0.423479       valid_1's rmse: 0.451184
+#[7500]  training's rmse: 0.404565       valid_1's rmse: 0.446218
+y_predlgb = modellgb.predict(spmatval)
 y_predlgb = np.expand_dims(y_predlgb, 1)
-print("LGB trees %s rmsle %s"%(model.best_iteration, eval_model(dvalid.price.values, y_predlgb)))
-# LGB trees 0 rmsle 0.446724284216
+print("LGB trees %s rmsle %s"%(modellgb.best_iteration, eval_model(dvalid.price.values, y_predlgb)))
+#LGB trees 0 rmsle 0.446218430005
 
 y_predbag = 0.5*y_predlgb+0.5*y_pred
 print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbag)))
-# Bagged rmsle 0.428013403748
+# Bagged rmsle 0.426802360837
 
 
 '''
