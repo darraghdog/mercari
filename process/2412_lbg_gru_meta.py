@@ -1,3 +1,8 @@
+# To do -- 1) Add count verctorizer to lgb with bigrams
+# 2) replace the description with the tokenizer, see bm script
+# 3) try Add() the embedding sequences
+# 4) Check adding a linear model and blend
+
 # mainly forking from notebook
 # https://www.kaggle.com/johnfarrell/simple-rnn-with-keras-script
 # http://jeffreyfossett.com/2014/04/25/tokenizing-raw-text-in-python.html
@@ -67,20 +72,21 @@ def get_characters():
 all_chars = sorted(list(get_characters()))
 "".join(all_chars)
 
-#text = u'This dog \uc758\uc774\uc8fd\ud55c\ud589\ud654\uf8ff\ufe0e \x96\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa9'
+
+#text = u'This dog -- \uc758\uc774\uc8fd\ud55c\ud589\ud654\uf8ff\ufe0e -- \x96\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa9'
 #print(text) # with emoji
 # https://stackoverflow.com/questions/33404752/removing-emojis-from-a-string-in-python
 special_pattern = re.compile( 
-    u"([\u0101-\ufffd])"  
-    #u"([\\x96-\xfc])" 
+    u"([\u0101-\ufffd])|"  
+    u"([\x96-\xfc])" 
     "+", flags=re.UNICODE)
 #print(special_pattern.sub(r'', text)) # no emoji
 
 
 for col in ["item_description", "name", "brand_name"]:
     print("Clean special characters from " + col)
-    train[col] = [(special_pattern.sub(r'', sent)) if sent == sent else sent for sent in train[col].values]
-    test[col] = [(special_pattern.sub(r'', sent)) if sent == sent else sent for sent in test[col].values]
+    train[col] = [(special_pattern.sub(r' ', sent)) if sent == sent else sent for sent in train[col].values]
+    test[col] = [(special_pattern.sub(r' ', sent)) if sent == sent else sent for sent in test[col].values]
 
 print('[{}] Finished remove bogus characters...'.format(time.time() - start_time))
 
@@ -177,7 +183,6 @@ def fit_sequence(str_, tkn_, filt = True):
 tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), max_words = 200)
 tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000)
 tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
-tok_raw_dtk = myTokenizerFit(train.item_description_token.str.lower().unique(), max_words = 50000)
 tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 50000)
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))
 print("   Transforming text to seq...")
@@ -206,7 +211,6 @@ MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
 MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
 MAX_CONDITION = np.max([train.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
-
 
 print('[{}] Finished EMBEDDINGS MAX VALUE...'.format(time.time() - start_time)) 
 
@@ -348,10 +352,10 @@ def get_model():
 
 print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 
-epochs = 3
+epochs = 2
 batchSize = 512 * 4
 steps = (dtrain.shape[0]/batchSize+1)*epochs
-lr_init, lr_fin = 0.013, 0.007
+lr_init, lr_fin = 0.013, 0.009
 lr_decay  = (lr_init - lr_fin)/steps
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
@@ -367,30 +371,36 @@ model.fit_generator(
                     , verbose=1
                     )
 val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
-y_pred1 = model.predict_generator(tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
+tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
+y_pred_epochs = []
+yspred_epochs = []
+
+for c, lr in enumerate([0.7, 0.9, 0.7]):
+    K.set_value(model.optimizer.decay, lr)
+    model.fit_generator(
+                        trn_generator(dtrain, dtrain.target, batchSize)
+                        , epochs=1#,epochs
+                        , max_queue_size=1
+                        , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
+                        , validation_data = val_generator(dvalid, dvalid.target, batchSize)
+                        , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                        , verbose=1
+                        )
+    y_pred_epochs.append(model.predict_generator(
+                    tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
                     , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
                     , max_queue_size=1 
-                    , verbose=1)[val_sorted_ix.argsort()]
-print("Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred1)))
-
-
-K.set_value(model.optimizer.decay, 0.09)
-model.fit_generator(
-                    trn_generator(dtrain, dtrain.target, batchSize)
-                    , epochs=1#,epochs
-                    , max_queue_size=1
-                    , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
-                    , validation_data = val_generator(dvalid, dvalid.target, batchSize)
-                    , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                    , verbose=1
-                    )
-y_pred2 = model.predict_generator(tst_generator(dvalid.iloc[val_sorted_ix], batchSize)
-                    , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , verbose=1)[val_sorted_ix.argsort()])
+    yspred_epochs.append(model.predict_generator(
+                    tst_generator(test.iloc[tst_sorted_ix], batchSize)
+                    , steps = int(np.ceil(test.shape[0]*1./batchSize))
                     , max_queue_size=1 
-                    , verbose=1)[val_sorted_ix.argsort()]
-y_pred = 0.5*(y_pred1+y_pred2)
-print("Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred2)))
-print("Bagged Epoch %s rmsle %s"%(epochs, eval_model(dvalid.price.values, y_pred)))
+                    , verbose=1)[tst_sorted_ix.argsort()])
+    print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
+y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
+yspred = sum(yspred_epochs)/len(yspred_epochs)
+print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
+# Bagged Epoch 5 rmsle 0.433009684974
 
 
 '''
@@ -413,16 +423,21 @@ def col2sparse(var, max_col):
     return csr_matrix((data, (row, col)), shape=shape_)
 
 llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
-          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK), \
-          ("seq_item_description_token", MAX_DTK)]
+          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
 lcols = ["brand", "item_condition_id", "shipping", "category"]
 
 spmatval = hstack([col2sparse(dvalid[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
                   [col2sparse([[l] for l in dvalid[c_].tolist()], \
-                               max_col = max(dvalid[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+                               max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
 spmattrn = hstack([col2sparse(dtrain[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
                   [col2sparse([[l] for l in dtrain[c_].tolist()], \
                                max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+spmattst = hstack([col2sparse(test [c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
+                  [col2sparse([[l] for l in test [c_].tolist()], \
+                               max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+print(spmatval.shape)
+print(spmattst.shape)
+print(spmattrn.shape)
 
 # Feature Engineering - Bayes Mean and count
 n_folds = 2 
@@ -457,10 +472,12 @@ for i in range(len(bcols)):
 
 spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean)])
 spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean)])
+spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean)])
 
 
 d_train = lgb.Dataset(spmattrn, label=dtrain.target)#, max_bin=8192)
 d_valid = lgb.Dataset(spmatval, label=dvalid.target)#, max_bin=8192)
+d_test  = lgb.Dataset(spmattst)#, max_bin=8192)
 watchlist = [d_train, d_valid]
 
 params = {
@@ -479,58 +496,23 @@ early_stopping_rounds=500, verbose_eval=10)
 #[7500]  training's rmse: 0.404565       valid_1's rmse: 0.446218
 y_predlgb = modellgb.predict(spmatval)
 y_predlgb = np.expand_dims(y_predlgb, 1)
+yspredlgb = modellgb.predict(spmattst)
+yspredlgb = np.expand_dims(yspredlgb, 1)
 print("LGB trees %s rmsle %s"%(modellgb.best_iteration, eval_model(dvalid.price.values, y_predlgb)))
-#LGB trees 0 rmsle 0.446218430005
+# LGB trees 0 rmsle 0.445696260725
 
-y_predbag = 0.5*y_predlgb+0.5*y_pred
+y_predbag = 0.4*y_predlgb+0.6*y_pred
+yspredbag = 0.4*yspredlgb+0.6*yspred
 print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbag)))
-# Bagged rmsle 0.426802360837
+# Bagged rmsle 0.421939881871
 
 
-'''
-Leak
-'''
-strcols = ["name", "item_condition_id", "category_name", "shipping", \
-           "category_name_split"]
-
-@jit
-def hashList(ll):
-    for k, v in ll.iteritems():
-        if k == 'item_description':
-            v = v[:20]
-    ll = [abs(hash(l))%(2**22) for l in ll.values]
-    return "_".join(map(str, ll))
-
-dvalid["leak"] = [ hashList(lv_) for (c, lv_)  in dvalid[strcols].iterrows()]
-dtrain["leak"] = [ hashList(lv_) for (c, lv_)  in dtrain[strcols].iterrows()]
-means_dict = pd.groupby(dtrain[["leak", "target"]], "leak").mean().to_dict()[u'target']
-
-leak = np.array([means_dict[l] if l in means_dict else np.NaN for l in dvalid["leak"].tolist()])
-y_predbaglk = 0.5*y_predlgb+0.5*y_pred
-ix = (~np.isnan(leak)) & (dvalid["name"].str.len().values>30)
-y_predbaglk[ix] = np.expand_dims(leak[ix],1)
-print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbaglk)))
-
-
-
-'''
-y_pred = model.predict_generator(tst_generator(test, batchSize), 
-                         steps = test.shape[0]/batchSize+1, 
-                         verbose=1)
-    
-
-    np.histogram(y_pred)
-    np.histogram( dvalid.target[val_sorted_ix])
-
-
-print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
 
 #CREATE PREDICTIONS
-preds = model.predict(X_test, batch_size=BATCH_SIZE)
-preds = np.expm1(preds)
+preds = np.expm1(yspredbag)
 print('[{}] Finished predicting test set...'.format(time.time() - start_time))
-submission = test[["test_id"]][:test_len]
-submission["price"] = preds[:test_len]
-submission.to_csv("./myNN"+log_subdir+"_{:.6}.csv".format(v_rmsle), index=False)
+submission = test[["test_id"]]
+submission["price"] = preds
+submission.to_csv("../sub/myBag_2404.csv", index=False)
+#submission.to_csv("./myBag"+log_subdir+"_{:.6}.csv".format(v_rmsle), index=False)
 print('[{}] Finished submission...'.format(time.time() - start_time))
-'''
