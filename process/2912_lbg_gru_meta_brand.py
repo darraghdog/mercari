@@ -64,6 +64,36 @@ print(train.shape)
 print(test.shape)
 print('[{}] Finished scaling test set...'.format(time.time() - start_time))
 
+
+brctr = Counter(train['brand_name'].str.lower().values.tolist())
+all_brands = [k for (k,v) in brctr.items() if (v>50 and k==k and len(k)>1)]
+len(all_brands)
+# Add 1 to the mapper so we dont clash with leading zeros
+brand_mapper = dict((v, c+1) for (c, v) in enumerate(all_brands))
+
+def brand_in_name(dt):
+    brnm = []
+    for c,(brnd, nm) in enumerate(zip(dt['brand_name'].str.lower().values,
+                        dt['name'].str.lower().values)):
+        if c%200000==0: print c
+        #print brnd, nm
+        brands = []
+        #if brnd==brnd:
+        #    if brnd in all_brands:
+        #        brands.append(brand_mapper[brnd])
+        #        #brands.append(brnd)
+        brands += [brand_mapper[e] for e in all_brands if ' '+e+' ' in nm]
+        #brands += [e for e in all_brands if e in nm]
+        # Make a cut off at max 3 brands so we dont get lot of leading zeroes
+        brnm.append(list(set(brands))[:3])
+    return brnm
+
+train['brand_in_name'] = brand_in_name(train[['brand_name', 'name']])
+test['brand_in_name'] = brand_in_name(test[['brand_name', 'name']])
+
+
+print('[{}] Finished getting brands in name...'.format(time.time() - start_time))
+
 print("Manual string correction...")
 tech_mapper = {
                'unblocked' : 'unlocked',
@@ -340,9 +370,9 @@ print(fit_sequence_check(sent , tok_raw_nam))
 '''
 
 
-tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), stem=False, cutoff=5)
+tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), stem=False, cutoff=2)
 #tok_raw_cat = myTokenizerFit(train.category_token.str.lower().unique(), max_words = 800)
-tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000, stem=False, cutoff=5)
+tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000, stem=False, cutoff=2)
 #tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
 tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), stem=False)
 tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), stem=False)
@@ -402,6 +432,7 @@ MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
+MAX_BMP = max(brand_mapper.values())+1
 #MAX_DST = max(tok_raw_dst.values())+1
 MAX_NST = max(tok_raw_nst.values())+1
 MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
@@ -409,7 +440,7 @@ MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
 MAX_CONDITION = np.max([train.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
     
-print(MAX_CAT,MAX_NAM, MAX_NTK, MAX_DSC,MAX_NST,MAX_CATEGORY,MAX_BRAND,MAX_CONDITION)
+print(MAX_CAT,MAX_NAM, MAX_NTK, MAX_DSC,MAX_NST,MAX_CATEGORY,MAX_BRAND,MAX_CONDITION, MAX_BMP)
     
 def get_keras_data(dataset):
     X = {
@@ -417,6 +448,8 @@ def get_keras_data(dataset):
                               maxlen=max([len(l) for l in dataset.seq_name]))
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
+        ,'bmp': pad_sequences(dataset.brand_in_name, 
+                              maxlen=max([len(l) for l in dataset.brand_in_name]))
         ,'nst': pad_sequences(dataset.seq_name_token_stem, 
                               maxlen=max([len(l) for l in dataset.seq_name_token_stem]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
@@ -507,6 +540,7 @@ def get_model():
     name = Input(shape=[None], name="name")
     ntk = Input(shape=[None], name="ntk")
     nst = Input(shape=[None], name="nst")
+    bmp = Input(shape=[None], name="bmp")
     #dst = Input(shape=[None], name="dst")
     item_desc = Input(shape=[None], name="item_desc")
     category_name_split = Input(shape=[None], name="category_name_split")
@@ -518,6 +552,7 @@ def get_model():
     #Embeddings layers
     emb_size = 60
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
+    emb_bmp                = Embedding(MAX_BMP, emb_size//5)(bmp) 
     emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
     emb_nst                 = Embedding(MAX_NST, emb_size//2)(nst) 
     #emb_dst                 = Embedding(MAX_DST, emb_size)(dst) 
@@ -531,6 +566,7 @@ def get_model():
     rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
     rnn_layer5 = GRU(8, recurrent_dropout=0.0) (emb_nst)
+    rnn_layer6 = GRU(8, recurrent_dropout=0.0) (emb_bmp)
     #rnn_layer6 = GRU(16, recurrent_dropout=0.0) (emb_dst)
     
     #dense_l = Dropout(dr*2)(Dense(256,activation='relu') (dense_name))
@@ -545,7 +581,7 @@ def get_model():
         , rnn_layer3
         , rnn_layer4
         , rnn_layer5
-        #, rnn_layer6G
+        , rnn_layer6
         , dense_l
         , num_vars
     ])
@@ -556,7 +592,7 @@ def get_model():
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name, nst#, dst
+    model = Model([name, brand, ntk, item_desc, dense_name, nst, bmp#, dst
                    , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
