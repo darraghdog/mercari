@@ -16,6 +16,7 @@ from collections import Counter
 from scipy.sparse import csr_matrix, hstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
+from nltk.tokenize.moses import MosesTokenizer
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -49,54 +50,27 @@ os.chdir('/home/darragh/mercari/data')
 train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
 test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
 glove_file = '../feat/glove.6B.50d.txt'
+threads = 8
+
+
+def col2sparse(var, max_col):
+    row = []
+    col = []
+    data = []
+    for c, l_ in enumerate(var):
+        n_ = len(l_)
+        row += [c]*n_
+        col += l_
+        data += [1]*n_
+    shape_ = (len(var), max_col+1)
+    return csr_matrix((data, (row, col)), shape=shape_)
 
 train['target'] = np.log1p(train['price'])
 print(train.shape)
 print(test.shape)
 print('[{}] Finished scaling test set...'.format(time.time() - start_time))
 
-
-emojis = re.compile( 
-    u"([^\u0101-\ufffd])"  
-    u"([^\x96-\xfc])" 
-    "+", flags=re.UNICODE)
-asterix = re.compile('[%s]' % '!"#%&()*,-./:;<=>?@[\\]^_`{|}~\t\n')   
-#print(special_pattern.sub(r'', text)) # no emoji
-
-#sent = test.iloc[23]
-
-@jit
-def count_grammar(sent):
-    counter = []
-    for col in [0,1]:
-        if sent[col]!=sent[col]:
-            sent[col]=''
-        counter.append(len(sent[col].split(' ')))
-        counter.append(len(sent[col]))
-        counter.append(len(re.findall(r'[A-Z]',sent[col])))
-        counter.append(len(re.findall(r'[0-9]',sent[col])))
-        counter.append(len(re.findall(asterix,sent[col])))
-        counter.append(len(re.findall(emojis,sent[col])))
-    return counter
-
-def make_feat():
-    pool = mp.Pool(processes=4)
-    trnfeat = np.array(pool.map(count_grammar, train[['item_description', 'name']].values), dtype=np.float16)
-    tstfeat = np.array(pool.map(count_grammar, test[['item_description', 'name']].values), dtype=np.float16)
-    pool.close
-    
-    trnfeat = np.log1p(trnfeat)
-    tstfeat = np.log1p(tstfeat)
-    max_feat = trnfeat.max(axis=0)
-    trnfeat /= max_feat
-    tstfeat /= max_feat
-    return trnfeat.tolist(), tstfeat.tolist()
-
-train['lost_features'], test['lost_features'] = make_feat()
-
-print('[{}] Finished creating features...'.format(time.time() - start_time))
-
-
+print("Manual string correction...")
 print("Manual string correction...")
 tech_mapper = {
                'unblocked' : 'unlocked',
@@ -134,7 +108,7 @@ def replace_maps(sent):
         sent = sent.replace(k, v)
     return sent
 import multiprocessing as mp
-pool = mp.Pool(processes=4)
+pool = mp.Pool(processes=threads)
 for col in ['name', 'item_description']:
     train[col] = train[col].str.lower()
     test[col] = test[col].str.lower().tolist()
@@ -142,6 +116,19 @@ for col in ['name', 'item_description']:
     test[col] = pool.map(replace_maps, test[col].values)
 pool.close
 print('[{}] Finished replacing text...'.format(time.time() - start_time))
+
+
+# Stplit the category to three columns
+train[['cat1','cat2', 'cat3']] = pd.DataFrame(train["category_name"].fillna('//').str.split('/',2).tolist())
+test[['cat1','cat2', 'cat3']] = pd.DataFrame(test["category_name"].fillna('//').str.split('/',2).tolist())
+
+
+train['brand_name_name'] = (train['name'] + ' ' + train['cat2'] + ' ' + train['cat3'] + ' cond' + train['item_condition_id'].map(str))
+test ['brand_name_name'] = (test ['name'] + ' ' + train['cat2'] + ' ' + train['cat3'] + ' cond' + test['item_condition_id'].map(str))
+ix = train['brand_name']==train['brand_name']
+train['brand_name_name'][ix] = (train['brand_name'][ix]+ ' ' + train['brand_name_name'][ix])
+ix = test['brand_name']==test['brand_name']
+test ['brand_name_name'][ix] = (test ['brand_name'][ix]+ ' ' + test ['brand_name_name'][ix])
 
 
 #HANDLE MISSING VALUES
@@ -167,8 +154,10 @@ le.fit(np.hstack([train.category_name, test.category_name]))
 train['category'] = le.transform(train.category_name)
 test['category'] = le.transform(test.category_name)
 
+
+
 hi_brand_cts = train['brand_name'].value_counts()
-hi_brand_cts = hi_brand_cts[hi_brand_cts>2].index.values
+hi_brand_cts = hi_brand_cts[hi_brand_cts>1].index.values
 train.brand_name[~train.brand_name.isin(hi_brand_cts)] = '_lo_count_'
 test.brand_name[~test.brand_name.isin(hi_brand_cts)] = '_lo_count_'
 le.fit(np.hstack([train.brand_name, test.brand_name]))
@@ -204,7 +193,7 @@ def remove_special(sent):
     return (special_pattern.sub(r' ', sent)) 
 
 import multiprocessing as mp
-pool = mp.Pool(processes=4)
+pool = mp.Pool(processes=threads)
 for col in ["item_description", "name", "brand_name"]:
     print("Clean special characters from " + col)
     #train[col] = [(special_pattern.sub(r' ', sent)) if sent == sent else sent for sent in train[col].values]
@@ -231,20 +220,25 @@ toktok = ToktokTokenizer()
 porter = PorterStemmer()
 tokSentMap = {}
 def tokSent(sent):
+    sent = sent.replace("'s", "")
     sent = sent.replace('/', ' ')
     return " ".join(toktok.tokenize(rgx.sub('', sent)))
 
 rgx = re.compile('[%s]' % '!"#%&()*,-./:;<=>?@[\\]^_`{|}~\t\n')   
 
-pool = mp.Pool(processes=4)
+pool = mp.Pool(processes=threads)
 train['description_token']      = pool.map(tokSent, train['item_description'].str.lower().tolist())
 test ['description_token']      = pool.map(tokSent, test ['item_description'].str.lower().tolist())
 train['name_token']             = pool.map(tokSent, train['name'].str.lower().tolist())
 test ['name_token']             = pool.map(tokSent, test ['name'].str.lower().tolist())
+train['brand_name_token']       = pool.map(tokSent, (train['name']+ ' ' + train['brand_name']).str.lower().tolist())
+test ['brand_name_token']       = pool.map(tokSent, (test ['name']+ ' ' + test['brand_name']).str.lower().tolist())
 train['category_token']         = pool.map(tokSent, train['category_name'].str.lower().tolist())
 test ['category_token']         = pool.map(tokSent, test ['category_name'].str.lower().tolist())
 train['brand_token']            = pool.map(tokSent, train['brand_name'].str.lower().tolist())
 test ['brand_token']            = pool.map(tokSent, test ['brand_name'].str.lower().tolist())
+train['brandnm_token']            = pool.map(tokSent, train['brand_name_name'].str.lower().tolist())
+test ['brandnm_token']            = pool.map(tokSent, test ['brand_name_name'].str.lower().tolist())
 print('[{}] Finished Tokenizing text...'.format(time.time() - start_time))
 pool.close
 
@@ -308,56 +302,35 @@ def posn_to_sparse(dt, embedding_map):
     dt_ids = csr_matrix((spdata, (sprow, spcol)), shape=shape_)
     return dt_ids
 
-from nltk.stem.lancaster import LancasterStemmer
-lancaster_stemmer = LancasterStemmer()
-from nltk.corpus import stopwords
-stopWords = set(stopwords.words('english'))
-stemdict = {}      
-
+                 
 @jit
-def myTokenizerFitJit(strls, stem, filt = True):
+def myTokenizerFitJit(strls, max_words = 25000, filt = True):
     list_=[]
-    #stemdict = {}
     for sent in strls:
         if filt:
             sent = rgx.sub(' ', sent)
         for s in sent.split(' '):
             if s!= '':
-                if stem:
-                    if s not in stemdict:
-                        stemdict[s] = lancaster_stemmer.stem(s)
-                    s = stemdict[s]
-                    if s not in stopWords:
-                        list_.append(s)
-                else:
-                    list_.append(s)
-    return Counter(list_)
+                list_.append(s)
+    return Counter(list_).most_common(max_words)
 
-def myTokenizerFit(strls, stem, max_words = 35000, cutoff=30):
-    mc = myTokenizerFitJit(strls, stem)
-    mc = [(k,v)  for (k, v) in mc.items() if v > cutoff]
+def myTokenizerFit(strls, max_words = 25000):
+    mc = myTokenizerFitJit(strls, max_words = 25000)
     return dict((i, c+1) for (c, (i, ii)) in enumerate(mc))  
 
 @jit
-def fit_sequence(str_, tkn_, stem, filt = True):
+def fit_sequence(str_, tkn_, filt = True):
     labels = []
-    #stemdict = {}
     for sent in str_:
         if filt:
             sent = rgx.sub(' ', sent)
         tk = []
         for i in sent.split(' '):
-            if stem:
-                if i not in stemdict:
-                    stemdict[i] = lancaster_stemmer.stem(i)
-                i = stemdict[i]
-
             if i in tkn_:
                 if i != '':
                     tk.append(tkn_[i])
         labels.append(tk)
     return labels
-
 '''
 @jit
 def fit_sequence_check(str_, tkn_, filt = True):
@@ -372,33 +345,26 @@ print(fit_sequence(sent , tok_raw_nam))
 print(fit_sequence_check(sent , tok_raw_nam))
 '''
 
-
-tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), stem=False, cutoff=5)
+tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), max_words = 800)
 #tok_raw_cat = myTokenizerFit(train.category_token.str.lower().unique(), max_words = 800)
-tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000, stem=False, cutoff=5)
+tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000)
 #tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
-tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), stem=False)
-tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), stem=False)
-#tok_raw_dst = myTokenizerFit(train.description_token.str.lower().unique(), stem=True, max_words = 25000)
-tok_raw_nst = myTokenizerFit(train.name_token.str.lower().unique(), stem=True)
+tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), max_words = 25000)
+tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 50000)
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
-train["seq_category_name_split"] =     fit_sequence(train.category_name_split.str.lower(), tok_raw_cat, stem=False)
-test["seq_category_name_split"] =      fit_sequence(test.category_name_split.str.lower(), tok_raw_cat, stem=False)
+train["seq_category_name_split"] =     fit_sequence(train.category_name_split.str.lower(), tok_raw_cat)
+test["seq_category_name_split"] =      fit_sequence(test.category_name_split.str.lower(), tok_raw_cat)
 #train["seq_category_name_split"] =     fit_sequence(train.category_token.str.lower(), tok_raw_cat)
 #test["seq_category_name_split"] =      fit_sequence(test.category_token.str.lower(), tok_raw_cat)
 #train["seq_item_description"] =        fit_sequence(train.item_description.str.lower(), tok_raw_dsc)
 #test["seq_item_description"] =         fit_sequence(test.item_description.str.lower(), tok_raw_dsc)
-train["seq_item_description"] =        fit_sequence(train.description_token.str.lower(), tok_raw_dsc, stem=False)
-test["seq_item_description"] =         fit_sequence(test.description_token.str.lower(), tok_raw_dsc, stem=False)
-train["seq_name"] =                    fit_sequence(train.name.str.lower(), tok_raw_nam, stem=False)
-test["seq_name"] =                     fit_sequence(test.name.str.lower(), tok_raw_nam, stem=False)
-train["seq_name_token"] =              fit_sequence(train.name_token.str.lower(), tok_raw_ntk, filt = False, stem=False)
-test["seq_name_token"] =               fit_sequence(test.name_token.str.lower(), tok_raw_ntk, filt = False, stem=False)
-#train["seq_item_description_stem"] =   fit_sequence(train.description_token.str.lower(), tok_raw_dst, stem=True)
-#test["seq_item_description_stem"] =    fit_sequence(test.description_token.str.lower(), tok_raw_dst, stem=True)
-train["seq_name_token_stem"] =         fit_sequence(train.name_token.str.lower(), tok_raw_nst, filt = False, stem=True)
-test["seq_name_token_stem"] =          fit_sequence(test.name_token.str.lower(), tok_raw_nst, filt = False, stem=True)
+train["seq_item_description"] =        fit_sequence(train.description_token.str.lower(), tok_raw_dsc)
+test["seq_item_description"] =         fit_sequence(test.description_token.str.lower(), tok_raw_dsc)
+train["seq_name"] =                    fit_sequence(train.name.str.lower(), tok_raw_nam)
+test["seq_name"] =                     fit_sequence(test.name.str.lower(), tok_raw_nam)
+train["seq_name_token"] =              fit_sequence(train.name_token.str.lower(), tok_raw_ntk, filt = False)
+test["seq_name_token"] =               fit_sequence(test.name_token.str.lower(), tok_raw_ntk, filt = False)
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 train.head()
 #EXTRACT DEVELOPTMENT TEST
@@ -434,37 +400,27 @@ print("   Fitting tokenizer...")
 MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
+MAX_BTK = max(tok_raw_btk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
-#MAX_DST = max(tok_raw_dst.values())+1
-MAX_NST = max(tok_raw_nst.values())+1
 MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
 MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
 MAX_CONDITION = np.max([train.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
     
-print(MAX_CAT,MAX_NAM, MAX_NTK, MAX_DSC,MAX_NST,MAX_CATEGORY,MAX_BRAND,MAX_CONDITION)
-    
-
-
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
                               maxlen=max([len(l) for l in dataset.seq_name]))
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
-        ,'nst': pad_sequences(dataset.seq_name_token_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_name_token_stem]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
                               maxlen=max([len(l) for l in dataset.seq_item_description]))
-        #,'dst': pad_sequences(dataset.seq_item_description_stem, 
-        #                      maxlen=max([len(l) for l in dataset.seq_item_description_stem]))
         ,'brand': np.array(dataset.brand)
         ,'category': np.array(dataset.category)
         ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
-        ,'lost_feat': np.array(dataset["lost_features"].tolist())
     }
     return X   
 
@@ -486,7 +442,7 @@ def reset_data(dt, bsize):
     n_batches = int(np.ceil(max_step*1. / float(bsize)))
     batch_steps = np.array(random.sample(range(n_batches), n_batches))
     #sorted_ix = np.array(len_argsort(dt["seq_item_description"].tolist()))
-    sorted_ix = np.array(map_sort(dt["seq_item_description"].tolist(), dt["seq_name_token"].tolist()))
+    sorted_ix = np.array(map_sort(dt["seq_item_description"].tolist(), dt["seq_bname_token"].tolist()))
     dt.reset_index(drop=True, inplace = True)  
     return max_step, batch_steps, sorted_ix, dt
 
@@ -542,8 +498,6 @@ def get_model():
     ##Inputs
     name = Input(shape=[None], name="name")
     ntk = Input(shape=[None], name="ntk")
-    nst = Input(shape=[None], name="nst")
-    #dst = Input(shape=[None], name="dst")
     item_desc = Input(shape=[None], name="item_desc")
     category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
@@ -554,20 +508,20 @@ def get_model():
     #Embeddings layers
     emb_size = 60
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
-    emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
-    emb_nst                 = Embedding(MAX_NST, emb_size//2)(nst) 
+    emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk)  
     emb_item_desc           = Embedding(MAX_DSC, emb_size)(item_desc) 
     emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
-    emb_brand               = Embedding(MAX_BRAND, 16)(brand)
+    emb_brand               = Embedding(MAX_BRAND, 8)(brand)
     emb_item_condition      = Embedding(MAX_CONDITION, 5)(item_condition)
     
     rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
     rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
     rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
-    rnn_layer5 = GRU(8, recurrent_dropout=0.0) (emb_nst)
     
-    dense_l = Dropout(dr*2)(Dense(32,activation='relu') (dense_name))
+    
+    dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
+    dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
@@ -576,19 +530,18 @@ def get_model():
         , rnn_layer1
         , rnn_layer2
         , rnn_layer3
-        , rnn_layer4
-        , rnn_layer5
+        #, rnn_layer4
         , dense_l
         , num_vars
     ])
-    main_l = Dropout(dr)(Dense(256,activation='relu') (main_l))
-    main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
+    main_l = Dropout(dr*1)(Dense(256,activation='elu') (main_l))
+    main_l = Dropout(dr*1)(Dense(32,activation='elu') (main_l))
     
     #output
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name, nst
+    model = Model([name, brand, ntk, item_desc, dense_name
                    , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
@@ -598,81 +551,68 @@ def get_model():
 
 print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 
+epochs = 2
+batchSize = 512 * 4
+steps = (dtrain.shape[0]/batchSize+1)*epochs
+lr_init, lr_fin = 0.015, 0.012
+lr_decay  = (lr_init - lr_fin)/steps
+model = get_model()
+K.set_value(model.optimizer.lr, lr_init)
+K.set_value(model.optimizer.decay, lr_decay)
+model.fit_generator(
+                    trn_generator(densetrn, dtrain, dtrain.target, batchSize)
+                    , epochs=epochs
+                    , max_queue_size=1
+                    , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
+                    , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
+                    , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , verbose=1
+                    , workers=1
+                    , use_multiprocessing=False
+                    )
+
+
+val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_bname_token"].tolist()))
+tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_bname_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-
-def run_me():
-    y_pred_epochsfn = []
-    yspred_epochsfn = []
-    epochs = 2
-    batchSize = 512 * 4
-    steps = (dtrain.shape[0]/batchSize+1)*epochs
-    lr_init, lr_fin = 0.015, 0.011
-    lr_decay  = (lr_init - lr_fin)/steps
-    model = get_model()
-    K.set_value(model.optimizer.lr, lr_init)
-    K.set_value(model.optimizer.decay, lr_decay)
+for c, lr in enumerate([0.010, 0.009,0.008]): #, 0.006]): # 0.007,
+    K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
                         trn_generator(densetrn, dtrain, dtrain.target, batchSize)
-                        , epochs=epochs
+                        , epochs=1#,epochs
                         , max_queue_size=1
                         , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                         , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                         , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , verbose=2
+                        , verbose=1
+                        , workers=1
+                        , use_multiprocessing=False
                         )
-    
-    
-    val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
-    tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
-    for c, lr in enumerate([ 0.010, 0.010]):
-        K.set_value(model.optimizer.lr, lr)
-        model.fit_generator(
-                            trn_generator(densetrn, dtrain, dtrain.target, batchSize)
-                            , epochs=1#,epochs
-                            , max_queue_size=1
-                            , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
-                            , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
-                            , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                            , verbose=2
-                            )
-        y_pred_epochsfn.append(model.predict_generator(
-                        tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
-                        , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , max_queue_size=1 
-                        , verbose=2)[val_sorted_ix.argsort()])
-        yspred_epochsfn.append(model.predict_generator(
-                        tst_generator(densetst[tst_sorted_ix], test.iloc[tst_sorted_ix], batchSize)
-                        , steps = int(np.ceil(test.shape[0]*1./batchSize))
-                        , max_queue_size=1 
-                        , verbose=2)[tst_sorted_ix.argsort()])
-        print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochsfn[-1])))
-    return y_pred_epochsfn, yspred_epochsfn
-    
-for bag in range(2):
-    l1, l2 = run_me()
-    y_pred_epochs += l1
-    yspred_epochs += l2
-
+    y_pred_epochs.append(model.predict_generator(
+                    tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
+                    , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , max_queue_size=1
+                    , workers=1
+                    , use_multiprocessing=False
+                    , verbose=2)[val_sorted_ix.argsort()])
+    yspred_epochs.append(model.predict_generator(
+                    tst_generator(densetst[tst_sorted_ix], test.iloc[tst_sorted_ix], batchSize)
+                    , steps = int(np.ceil(test.shape[0]*1./batchSize))
+                    , max_queue_size=1
+                    , workers=1
+                    , use_multiprocessing=False
+                    , verbose=2)[tst_sorted_ix.argsort()])
+    print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
-print("Bagged nnet rmsle %s"%(eval_model(dvalid.price.values, y_pred)))
-# Bagged Epoch 5 rmsle 0.427645675244
+print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
+# Bagged Epoch 5 rmsle 0.429088545511
+
+
 '''
 Start the lightgbm
 '''
-
-def col2sparse(var, max_col):
-    row = []
-    col = []
-    data = []
-    for c, l_ in enumerate(var):
-        n_ = len(l_)
-        row += [c]*n_
-        col += l_
-        data += [1]*n_
-    shape_ = (len(var), max_col+1)
-    return csr_matrix((data, (row, col)), shape=shape_)
 
 #llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
 #          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
@@ -725,9 +665,9 @@ for i in range(len(bcols)):
     tst_bayes_mean[:, i] = bayesMean(dtrain, test, t_col = bcols[i])
     
 
-spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean), csr_matrix(np.array(dvalid["lost_features"].tolist()))])
-spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean), csr_matrix(np.array(dtrain["lost_features"].tolist()))])
-spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean), csr_matrix(np.array(test["lost_features"].tolist()))])
+spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean)])
+spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean)])
+spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean)])
 
 
 d_train = lgb.Dataset(spmattrn, label=dtrain.target)#, max_bin=1024)
@@ -743,51 +683,26 @@ params = {
     'verbosity': -1,
     'metric': 'RMSE',
     'nthread': 4,
-    'feature_fraction':0.7,
-    'max_bin' : 16,#1024
+    'max_bin' : 1024
 }
-num_rounds = 5500
 
-modellgb = lgb.train(params, train_set=d_train, num_boost_round=num_rounds, valid_sets=watchlist, \
+modellgb = lgb.train(params, train_set=d_train, num_boost_round=7500, valid_sets=watchlist, \
 early_stopping_rounds=500, verbose_eval=250) 
-#[4000]  training's rmse: 0.426448       valid_1's rmse: 0.450838
-#[7500]  training's rmse: 0.407931       valid_1's rmse: 0.445383
+#[4000]  training's rmse: 0.427902       valid_1's rmse: 0.45261
+#[7080]  training's rmse: 0.4108 valid_1's rmse: 0.447027
 y_predlgb = modellgb.predict(spmatval)
 y_predlgb = np.expand_dims(y_predlgb, 1)
 yspredlgb = modellgb.predict(spmattst)
 yspredlgb = np.expand_dims(yspredlgb, 1)
 
 print("LGB trees rmsle %s"%( eval_model(dvalid.price.values, y_predlgb)))
-# LGB trees rmsle 0.445382854056
-'''
-from sklearn.linear_model import Ridge
-model = Ridge(solver="sag", fit_intercept=True, random_state=205, alpha=3)
-model.fit(spmattrn, dtrain.target)
-print('[{}] Finished to train ridge sag'.format(time.time() - start_time))
-y_predsRval = model.predict(X=spmatval)
-y_predsRtst = model.predict(X=spmattst)
-print('[{}] Finished to predict ridge sag'.format(time.time() - start_time))
-y_predsRval = np.expand_dims(y_predsRval, 1)
-print("Ridge rmsle %s"%( eval_model(dvalid.price.values, y_predsRval)))
-'''
-y_predbag = 0.3*y_predlgb+0.7*y_pred 
-yspredbag = 0.3*yspredlgb+0.7*yspred
+# LGB trees 0 rmsle 0.446724284216
+
+y_predbag = 0.4*y_predlgb+0.6*y_pred 
+yspredbag = 0.4*yspredlgb+0.6*yspred
 print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbag)))
-# Bagged rmsle 0.418875993307
+# Bagged rmsle 0.419434782864
 
-'''
-dvalid['pred'] = np.expm1(y_predbag)
-ix_ = np.argsort(np.absolute(dvalid.target.values-y_predbag[:,0]))
-dvalid[['brand_name', 'price', 'pred','name', 'name_token', 'item_description']].iloc[ \
-        ix_[-1000:]].to_csv('../explore/topk_wrong_rows.csv')
-dvalid[['brand_name', 'price', 'pred','name', 'name_token', 'item_description']].iloc[ \
-        ix_[:1000]].to_csv('../explore/topk_right_rows.csv')
-print("Bagged rmsle %s"%(eval_model(dvalid.price.values[74127:], y_predbag[74127:])))
-
-train[train.item_description.str.contains('[rm]')].price.mean()
-train.price.mean()
-dvalid[[ 'price', 'pred']].iloc[np.argsort(np.absolute(dvalid.target.values-y_predbag[:,0]))]
-'''
 
 print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
 
@@ -797,6 +712,6 @@ print('[{}] Finished predicting test set...'.format(time.time() - start_time))
 submission = test[["test_id"]]
 submission["price"] = preds
 # submission.to_csv("./myBag_2604.csv", index=False)
-submission.to_csv("../sub/myBag_2704.csv.gz", index=False)
+submission.to_csv("./myBag_2704.csv", index=False)
 #submission.to_csv("./myBag"+log_subdir+"_{:.6}.csv".format(v_rmsle), index=False)
 print('[{}] Finished submission...'.format(time.time() - start_time))

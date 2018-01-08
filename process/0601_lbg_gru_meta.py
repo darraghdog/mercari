@@ -51,10 +51,23 @@ test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
 glove_file = '../feat/glove.6B.50d.txt'
 
 train['target'] = np.log1p(train['price'])
+
+def col2sparse(var, max_col):
+    row = []
+    col = []
+    data = []
+    for c, l_ in enumerate(var):
+        n_ = len(l_)
+        row += [c]*n_
+        col += l_
+        data += [1]*n_
+    shape_ = (len(var), max_col+1)
+    return csr_matrix((data, (row, col)), shape=shape_)
+
+train['target'] = np.log1p(train['price'])
 print(train.shape)
 print(test.shape)
 print('[{}] Finished scaling test set...'.format(time.time() - start_time))
-
 
 emojis = re.compile( 
     u"([^\u0101-\ufffd])"  
@@ -96,7 +109,7 @@ train['lost_features'], test['lost_features'] = make_feat()
 
 print('[{}] Finished creating features...'.format(time.time() - start_time))
 
-
+print("Manual string correction...")
 print("Manual string correction...")
 tech_mapper = {
                'unblocked' : 'unlocked',
@@ -308,56 +321,35 @@ def posn_to_sparse(dt, embedding_map):
     dt_ids = csr_matrix((spdata, (sprow, spcol)), shape=shape_)
     return dt_ids
 
-from nltk.stem.lancaster import LancasterStemmer
-lancaster_stemmer = LancasterStemmer()
-from nltk.corpus import stopwords
-stopWords = set(stopwords.words('english'))
-stemdict = {}      
-
+                 
 @jit
-def myTokenizerFitJit(strls, stem, filt = True):
+def myTokenizerFitJit(strls, max_words = 25000, filt = True):
     list_=[]
-    #stemdict = {}
     for sent in strls:
         if filt:
             sent = rgx.sub(' ', sent)
         for s in sent.split(' '):
             if s!= '':
-                if stem:
-                    if s not in stemdict:
-                        stemdict[s] = lancaster_stemmer.stem(s)
-                    s = stemdict[s]
-                    if s not in stopWords:
-                        list_.append(s)
-                else:
-                    list_.append(s)
-    return Counter(list_)
+                list_.append(s)
+    return Counter(list_).most_common(max_words)
 
-def myTokenizerFit(strls, stem, max_words = 35000, cutoff=30):
-    mc = myTokenizerFitJit(strls, stem)
-    mc = [(k,v)  for (k, v) in mc.items() if v > cutoff]
+def myTokenizerFit(strls, max_words = 25000):
+    mc = myTokenizerFitJit(strls, max_words = 25000)
     return dict((i, c+1) for (c, (i, ii)) in enumerate(mc))  
 
 @jit
-def fit_sequence(str_, tkn_, stem, filt = True):
+def fit_sequence(str_, tkn_, filt = True):
     labels = []
-    #stemdict = {}
     for sent in str_:
         if filt:
             sent = rgx.sub(' ', sent)
         tk = []
         for i in sent.split(' '):
-            if stem:
-                if i not in stemdict:
-                    stemdict[i] = lancaster_stemmer.stem(i)
-                i = stemdict[i]
-
             if i in tkn_:
                 if i != '':
                     tk.append(tkn_[i])
         labels.append(tk)
     return labels
-
 '''
 @jit
 def fit_sequence_check(str_, tkn_, filt = True):
@@ -372,39 +364,70 @@ print(fit_sequence(sent , tok_raw_nam))
 print(fit_sequence_check(sent , tok_raw_nam))
 '''
 
-
-tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), stem=False, cutoff=5)
-#tok_raw_cat = myTokenizerFit(train.category_token.str.lower().unique(), max_words = 800)
-tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000, stem=False, cutoff=5)
-#tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
-tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), stem=False)
-tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), stem=False)
-#tok_raw_dst = myTokenizerFit(train.description_token.str.lower().unique(), stem=True, max_words = 25000)
-tok_raw_nst = myTokenizerFit(train.name_token.str.lower().unique(), stem=True)
+tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), max_words = 800)
+tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000)
+tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), max_words = 25000)
+tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 50000)
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
-train["seq_category_name_split"] =     fit_sequence(train.category_name_split.str.lower(), tok_raw_cat, stem=False)
-test["seq_category_name_split"] =      fit_sequence(test.category_name_split.str.lower(), tok_raw_cat, stem=False)
-#train["seq_category_name_split"] =     fit_sequence(train.category_token.str.lower(), tok_raw_cat)
-#test["seq_category_name_split"] =      fit_sequence(test.category_token.str.lower(), tok_raw_cat)
-#train["seq_item_description"] =        fit_sequence(train.item_description.str.lower(), tok_raw_dsc)
-#test["seq_item_description"] =         fit_sequence(test.item_description.str.lower(), tok_raw_dsc)
-train["seq_item_description"] =        fit_sequence(train.description_token.str.lower(), tok_raw_dsc, stem=False)
-test["seq_item_description"] =         fit_sequence(test.description_token.str.lower(), tok_raw_dsc, stem=False)
-train["seq_name"] =                    fit_sequence(train.name.str.lower(), tok_raw_nam, stem=False)
-test["seq_name"] =                     fit_sequence(test.name.str.lower(), tok_raw_nam, stem=False)
-train["seq_name_token"] =              fit_sequence(train.name_token.str.lower(), tok_raw_ntk, filt = False, stem=False)
-test["seq_name_token"] =               fit_sequence(test.name_token.str.lower(), tok_raw_ntk, filt = False, stem=False)
-#train["seq_item_description_stem"] =   fit_sequence(train.description_token.str.lower(), tok_raw_dst, stem=True)
-#test["seq_item_description_stem"] =    fit_sequence(test.description_token.str.lower(), tok_raw_dst, stem=True)
-train["seq_name_token_stem"] =         fit_sequence(train.name_token.str.lower(), tok_raw_nst, filt = False, stem=True)
-test["seq_name_token_stem"] =          fit_sequence(test.name_token.str.lower(), tok_raw_nst, filt = False, stem=True)
+train["seq_category_name_split"] =     fit_sequence(train.category_name_split.str.lower(), tok_raw_cat)
+test["seq_category_name_split"] =      fit_sequence(test.category_name_split.str.lower(), tok_raw_cat)
+train["seq_item_description"] =        fit_sequence(train.description_token.str.lower(), tok_raw_dsc)
+test["seq_item_description"] =         fit_sequence(test.description_token.str.lower(), tok_raw_dsc)
+train["seq_name"] =                    fit_sequence(train.name.str.lower(), tok_raw_nam)
+test["seq_name"] =                     fit_sequence(test.name.str.lower(), tok_raw_nam)
+train["seq_name_token"] =              fit_sequence(train.name_token.str.lower(), tok_raw_ntk, filt = False)
+test["seq_name_token"] =               fit_sequence(test.name_token.str.lower(), tok_raw_ntk, filt = False)
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 train.head()
 #EXTRACT DEVELOPTMENT TEST
 
 print('[{}] Embeddings loaded...'.format(time.time() - start_time))
 dtrain, dvalid = train_test_split(train, random_state=233, train_size=0.90)
+ix_zero = (dtrain.price>0).values
+dtrain = dtrain[ix_zero]
+test.head(100)
+
+'''
+def looPrice(dftrn, dftst, cols, prior = 5):
+    glob_mean = dftrn.target.mean()
+    dupes_ix = dftrn.append(dftst).duplicated(subset = cols, keep=False).values[:dftrn.shape[0]]
+    dupes = dftrn[dupes_ix][cols+['target']]
+    dupes[cols].fillna('NAN', inplace = True)
+    dftrn[cols].fillna('NAN', inplace = True)
+    dftst[cols].fillna('NAN', inplace = True)
+    dupes['loo_ct'] = dupes.groupby(cols)['target'].transform('count')
+    dupes['loo_sum'] = dupes.groupby(cols)['target'].transform('sum')
+    dupes.drop('target', 1, inplace = True)
+    dupes.drop_duplicates(inplace=True)
+    dftrn = pd.merge(dftrn, dupes[dupes.loo_ct>1], how='left', on = cols)
+    dftst  = pd.merge(dftst , dupes, how='left', on = cols)
+    loo_price_trn = ((dftrn.loo_sum - dftrn.target)+(glob_mean*prior))/((dftrn.loo_ct-1)+prior)
+    loo_price_tst = (dftst .loo_sum+(glob_mean*prior))/(dftst.loo_ct+prior)
+    #loo_price_trn = ((dftrn.loo_sum - dftrn.target))/((dftrn.loo_ct-1))
+    #loo_price_tst = (dftst .loo_sum)/(dftst.loo_ct)
+    return loo_price_trn, loo_price_tst
+
+
+cols = ['name', 'category_name', 'item_condition_id', 'brand_name', 'shipping']
+dtrain['loo_price_nm'], test  ['loo_price_nm'] = looPrice(dtrain, test, cols)
+_                     , dvalid['loo_price_nm'] = looPrice(dtrain, dvalid, cols)
+cols = ['name', 'category_name', 'item_condition_id', 'brand_name', 'shipping', 'item_description']
+dtrain['loo_price_ds'], test  ['loo_price_ds'] = looPrice(dtrain, test, cols)
+_                     , dvalid['loo_price_ds'] = looPrice(dtrain, dvalid, cols)
+cols = ['category_name', 'item_condition_id', 'brand_name', 'shipping']
+dtrain['loo_price_ct'], test  ['loo_price_ct'] = looPrice(dtrain, test, cols)
+_                     , dvalid['loo_price_ct'] = looPrice(dtrain, dvalid, cols)
+cols = ['category_name', 'item_condition_id', 'brand_name']
+dtrain['loo_price_bci'], test  ['loo_price_bci'] = looPrice(dtrain, test, cols)
+_                     , dvalid['loo_price_bci'] = looPrice(dtrain, dvalid, cols)
+cols = ['category_name', 'brand_name']
+dtrain['loo_price_bc'], test  ['loo_price_bc'] = looPrice(dtrain, test, cols)
+_                     , dvalid['loo_price_bc'] = looPrice(dtrain, dvalid, cols)
+add_cols = filter(lambda x:'loo_price' in x, dtrain.columns)
+'''
+
+print('[{}] LOO columns created...'.format(time.time() - start_time))
 
 dtrain_ids = posn_to_sparse(dtrain, embedding_map)
 dvalid_ids = posn_to_sparse(dvalid, embedding_map)
@@ -435,36 +458,25 @@ MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
-#MAX_DST = max(tok_raw_dst.values())+1
-MAX_NST = max(tok_raw_nst.values())+1
 MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
 MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
 MAX_CONDITION = np.max([train.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
     
-print(MAX_CAT,MAX_NAM, MAX_NTK, MAX_DSC,MAX_NST,MAX_CATEGORY,MAX_BRAND,MAX_CONDITION)
-    
-
-
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
                               maxlen=max([len(l) for l in dataset.seq_name]))
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
-        ,'nst': pad_sequences(dataset.seq_name_token_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_name_token_stem]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
                               maxlen=max([len(l) for l in dataset.seq_item_description]))
-        #,'dst': pad_sequences(dataset.seq_item_description_stem, 
-        #                      maxlen=max([len(l) for l in dataset.seq_item_description_stem]))
         ,'brand': np.array(dataset.brand)
         ,'category': np.array(dataset.category)
         ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
-        ,'lost_feat': np.array(dataset["lost_features"].tolist())
     }
     return X   
 
@@ -542,8 +554,6 @@ def get_model():
     ##Inputs
     name = Input(shape=[None], name="name")
     ntk = Input(shape=[None], name="ntk")
-    nst = Input(shape=[None], name="nst")
-    #dst = Input(shape=[None], name="dst")
     item_desc = Input(shape=[None], name="item_desc")
     category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
@@ -555,19 +565,19 @@ def get_model():
     emb_size = 60
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
     emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
-    emb_nst                 = Embedding(MAX_NST, emb_size//2)(nst) 
     emb_item_desc           = Embedding(MAX_DSC, emb_size)(item_desc) 
     emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
-    emb_brand               = Embedding(MAX_BRAND, 16)(brand)
+    emb_brand               = Embedding(MAX_BRAND, 8)(brand)
     emb_item_condition      = Embedding(MAX_CONDITION, 5)(item_condition)
     
     rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
     rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
     rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
-    rnn_layer5 = GRU(8, recurrent_dropout=0.0) (emb_nst)
     
-    dense_l = Dropout(dr*2)(Dense(32,activation='relu') (dense_name))
+    
+    dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
+    dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
@@ -577,18 +587,17 @@ def get_model():
         , rnn_layer2
         , rnn_layer3
         , rnn_layer4
-        , rnn_layer5
         , dense_l
         , num_vars
     ])
-    main_l = Dropout(dr)(Dense(256,activation='relu') (main_l))
+    main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
     #output
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name, nst
+    model = Model([name, brand, ntk, item_desc, dense_name
                    , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
@@ -598,66 +607,59 @@ def get_model():
 
 print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 
+
+epochs = 2
+batchSize = 512 * 4
+steps = (dtrain.shape[0]/batchSize+1)*epochs
+lr_init, lr_fin = 0.015, 0.012
+lr_decay  = (lr_init - lr_fin)/steps
+model = get_model()
+K.set_value(model.optimizer.lr, lr_init)
+K.set_value(model.optimizer.decay, lr_decay)
+model.fit_generator(
+                    trn_generator(densetrn, dtrain, dtrain.target, batchSize)
+                    , epochs=epochs
+                    , max_queue_size=1
+                    , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
+                    , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
+                    , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , verbose=1
+                    )
+
+
+val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
+tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-
-def run_me():
-    y_pred_epochsfn = []
-    yspred_epochsfn = []
-    epochs = 2
-    batchSize = 512 * 4
-    steps = (dtrain.shape[0]/batchSize+1)*epochs
-    lr_init, lr_fin = 0.015, 0.011
-    lr_decay  = (lr_init - lr_fin)/steps
-    model = get_model()
-    K.set_value(model.optimizer.lr, lr_init)
-    K.set_value(model.optimizer.decay, lr_decay)
+for c, lr in enumerate([0.010, 0.009,0.008, 0.006]): # 0.007,
+    K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
                         trn_generator(densetrn, dtrain, dtrain.target, batchSize)
-                        , epochs=epochs
+                        , epochs=1#,epochs
                         , max_queue_size=1
                         , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                         , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                         , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , verbose=2
+                        , verbose=1
                         )
-    
-    
-    val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
-    tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
-    for c, lr in enumerate([ 0.010, 0.010]):
-        K.set_value(model.optimizer.lr, lr)
-        model.fit_generator(
-                            trn_generator(densetrn, dtrain, dtrain.target, batchSize)
-                            , epochs=1#,epochs
-                            , max_queue_size=1
-                            , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
-                            , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
-                            , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                            , verbose=2
-                            )
-        y_pred_epochsfn.append(model.predict_generator(
-                        tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
-                        , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , max_queue_size=1 
-                        , verbose=2)[val_sorted_ix.argsort()])
-        yspred_epochsfn.append(model.predict_generator(
-                        tst_generator(densetst[tst_sorted_ix], test.iloc[tst_sorted_ix], batchSize)
-                        , steps = int(np.ceil(test.shape[0]*1./batchSize))
-                        , max_queue_size=1 
-                        , verbose=2)[tst_sorted_ix.argsort()])
-        print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochsfn[-1])))
-    return y_pred_epochsfn, yspred_epochsfn
-    
-for bag in range(2):
-    l1, l2 = run_me()
-    y_pred_epochs += l1
-    yspred_epochs += l2
-
+    y_pred_epochs.append(model.predict_generator(
+                    tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
+                    , steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
+                    , max_queue_size=1 
+                    , verbose=2)[val_sorted_ix.argsort()])
+    yspred_epochs.append(model.predict_generator(
+                    tst_generator(densetst[tst_sorted_ix], test.iloc[tst_sorted_ix], batchSize)
+                    , steps = int(np.ceil(test.shape[0]*1./batchSize))
+                    , max_queue_size=1 
+                    , verbose=2)[tst_sorted_ix.argsort()])
+    print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
-print("Bagged nnet rmsle %s"%(eval_model(dvalid.price.values, y_pred)))
-# Bagged Epoch 5 rmsle 0.427645675244
+print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
+# RMSLE error on dev test: 0.43166731239
+# Bagged Epoch 6 rmsle 0.43166731239
+
+
 '''
 Start the lightgbm
 '''
@@ -674,8 +676,64 @@ def col2sparse(var, max_col):
     shape_ = (len(var), max_col+1)
     return csr_matrix((data, (row, col)), shape=shape_)
 
-#llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
-#          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
+import itertools
+def counter(var, max_col):
+    row = []
+    col = []
+    data = []
+    #doccts = np.array(Counter(list(itertools.chain(*var))).values())
+    for c, l_ in enumerate(var):
+        lc_ = Counter(l_)
+        n_ = len(lc_)
+        row += [c]*n_
+        col += lc_.keys()
+        data += lc_.values()
+    shape_ = (len(var), max_col+1)
+    return csr_matrix((data, (row, col)), shape=shape_)
+
+# var, max_col = dvalid["seq_item_description"].tolist(), MAX_DSC
+
+'''
+ctcols = ["seq_item_description", MAX_DSC]
+llcols = [("seq_category_name_split", MAX_CAT), ("seq_name_token", MAX_NTK)]
+lcols = ["brand", "item_condition_id", "shipping", "category"]
+
+spmatval = hstack([counter(dvalid[ctcols[0]].tolist(), max_col = ctcols[1])] + \
+                  [col2sparse(dvalid[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
+                  [col2sparse([[l] for l in dvalid[c_].tolist()], \
+                               max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+spmattrn = hstack([counter(dtrain[ctcols[0]].tolist(), max_col = ctcols[1])] + \
+                  [col2sparse(dtrain[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
+                  [col2sparse([[l] for l in dtrain[c_].tolist()], \
+                               max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+spmattst = hstack([counter(test[ctcols[0]].tolist(), max_col = ctcols[1])] + \
+                  [col2sparse(test [c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
+                  [col2sparse([[l] for l in test [c_].tolist()], \
+                               max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+print(spmatval.shape)
+print(spmattst.shape)
+print(spmattrn.shape)
+
+
+from scipy import sparse
+colsums = np.squeeze(np.transpose(np.array(spmattrn.sum(0))))
+
+spmatval = csr_matrix(spmatval)[:,colsums>5.]
+spmattrn = csr_matrix(spmattrn)[:,colsums>5.]
+spmattst = csr_matrix(spmattst)[:,colsums>5.]
+
+print(spmatval.shape)
+print(spmattst.shape)
+print(spmattrn.shape)
+
+colmax = np.squeeze(np.transpose(np.array(spmattrn.max(0).todense())))
+colmin = np.squeeze(np.transpose(np.array(spmattrn.min(0).todense())))
+coldiff = 1./(colmax-colmin)
+
+spmatval = spmatval.multiply(coldiff)
+spmattrn = spmattrn.multiply(coldiff)
+spmattst = spmattst.multiply(coldiff)
+'''
 llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
           ("seq_name_token", MAX_NTK)]
 lcols = ["brand", "item_condition_id", "shipping", "category"]
@@ -689,9 +747,20 @@ spmattrn = hstack([col2sparse(dtrain[c_].tolist(), max_col = max_val) for (c_, m
 spmattst = hstack([col2sparse(test [c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
                   [col2sparse([[l] for l in test [c_].tolist()], \
                                max_col = max(dtrain[c_].tolist())+1) for c_ in lcols]).tocsr().astype(np.float32)
+
 print(spmatval.shape)
 print(spmattst.shape)
 print(spmattrn.shape)
+
+from sklearn.linear_model import Ridge
+print('[{}] Start to train ridge sag'.format(time.time() - start_time))
+model = Ridge(solver="sag", fit_intercept=True, random_state=205, alpha=3)
+model.fit(spmattrn, dtrain.target)
+print('[{}] Finished to train ridge sag'.format(time.time() - start_time))
+predsR = model.predict(X=spmatval)
+print('[{}] Finished to predict ridge sag'.format(time.time() - start_time))
+print("Bagged rmsle %s"%(eval_model(dvalid.price.values, np.expand_dims(predsR,1))))
+
 
 # Feature Engineering - Bayes Mean and count
 n_folds = 2 
@@ -725,10 +794,17 @@ for i in range(len(bcols)):
     tst_bayes_mean[:, i] = bayesMean(dtrain, test, t_col = bcols[i])
     
 
-spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean), csr_matrix(np.array(dvalid["lost_features"].tolist()))])
-spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean), csr_matrix(np.array(dtrain["lost_features"].tolist()))])
-spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean), csr_matrix(np.array(test["lost_features"].tolist()))])
-
+spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean)])
+spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean)])
+spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean)])
+'''
+spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean), 
+                   csr_matrix(np.array(dvalid["lost_features"].tolist())))
+spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean), 
+                   csr_matrix(np.array(dtrain["lost_features"].tolist())))
+spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean), 
+                   csr_matrix(np.array(test["lost_features"].tolist())))
+'''
 
 d_train = lgb.Dataset(spmattrn, label=dtrain.target)#, max_bin=1024)
 d_valid = lgb.Dataset(spmatval, label=dvalid.target)#, max_bin=1024)
@@ -742,52 +818,26 @@ params = {
     'num_leaves': 99,
     'verbosity': -1,
     'metric': 'RMSE',
-    'nthread': 4,
-    'feature_fraction':0.7,
-    'max_bin' : 16,#1024
+    'nthread': 8,
+    'max_bin' : 8192#1024
 }
-num_rounds = 5500
 
-modellgb = lgb.train(params, train_set=d_train, num_boost_round=num_rounds, valid_sets=watchlist, \
+modellgb = lgb.train(params, train_set=d_train, num_boost_round=7500, valid_sets=watchlist, \
 early_stopping_rounds=500, verbose_eval=250) 
-#[4000]  training's rmse: 0.426448       valid_1's rmse: 0.450838
-#[7500]  training's rmse: 0.407931       valid_1's rmse: 0.445383
+#[3000]  training's rmse: 0.422769       valid_1's rmse: 0.451751
 y_predlgb = modellgb.predict(spmatval)
 y_predlgb = np.expand_dims(y_predlgb, 1)
 yspredlgb = modellgb.predict(spmattst)
 yspredlgb = np.expand_dims(yspredlgb, 1)
 
 print("LGB trees rmsle %s"%( eval_model(dvalid.price.values, y_predlgb)))
-# LGB trees rmsle 0.445382854056
-'''
-from sklearn.linear_model import Ridge
-model = Ridge(solver="sag", fit_intercept=True, random_state=205, alpha=3)
-model.fit(spmattrn, dtrain.target)
-print('[{}] Finished to train ridge sag'.format(time.time() - start_time))
-y_predsRval = model.predict(X=spmatval)
-y_predsRtst = model.predict(X=spmattst)
-print('[{}] Finished to predict ridge sag'.format(time.time() - start_time))
-y_predsRval = np.expand_dims(y_predsRval, 1)
-print("Ridge rmsle %s"%( eval_model(dvalid.price.values, y_predsRval)))
-'''
-y_predbag = 0.3*y_predlgb+0.7*y_pred 
-yspredbag = 0.3*yspredlgb+0.7*yspred
+# LGB trees 0 rmsle 0.446724284216
+
+y_predbag = 0.4*y_predlgb+0.6*y_pred 
+yspredbag = 0.4*yspredlgb+0.6*yspred
 print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbag)))
-# Bagged rmsle 0.418875993307
+# Bagged rmsle 0.419434782864
 
-'''
-dvalid['pred'] = np.expm1(y_predbag)
-ix_ = np.argsort(np.absolute(dvalid.target.values-y_predbag[:,0]))
-dvalid[['brand_name', 'price', 'pred','name', 'name_token', 'item_description']].iloc[ \
-        ix_[-1000:]].to_csv('../explore/topk_wrong_rows.csv')
-dvalid[['brand_name', 'price', 'pred','name', 'name_token', 'item_description']].iloc[ \
-        ix_[:1000]].to_csv('../explore/topk_right_rows.csv')
-print("Bagged rmsle %s"%(eval_model(dvalid.price.values[74127:], y_predbag[74127:])))
-
-train[train.item_description.str.contains('[rm]')].price.mean()
-train.price.mean()
-dvalid[[ 'price', 'pred']].iloc[np.argsort(np.absolute(dvalid.target.values-y_predbag[:,0]))]
-'''
 
 print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
 
@@ -797,6 +847,6 @@ print('[{}] Finished predicting test set...'.format(time.time() - start_time))
 submission = test[["test_id"]]
 submission["price"] = preds
 # submission.to_csv("./myBag_2604.csv", index=False)
-submission.to_csv("../sub/myBag_2704.csv.gz", index=False)
+submission.to_csv("./myBag_2704.csv", index=False)
 #submission.to_csv("./myBag"+log_subdir+"_{:.6}.csv".format(v_rmsle), index=False)
 print('[{}] Finished submission...'.format(time.time() - start_time))
