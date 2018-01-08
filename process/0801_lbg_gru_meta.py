@@ -721,35 +721,89 @@ yspredlgb = np.expand_dims(yspredlgb, 1)
 print("LGB trees rmsle %s"%( eval_model(dvalid.price.values, y_predlgb)))
 # LGB trees 0 rmsle 0.446724284216
 
-scale(spmatval, axis=0, with_mean=True, with_std=True, copy=True)
-
-colmax = np.squeeze(np.transpose(np.array(spmattrn.max(0).todense())))
-colmin = np.squeeze(np.transpose(np.array(spmattrn.min(0).todense())))
-coldiff = 1./(colmax-colmin)
-
-spmatval = spmatval.multiply(coldiff)
-spmattrn = spmattrn.multiply(coldiff)
-spmattst = spmattst.multiply(coldiff)
-'''
-colsums = np.squeeze(np.transpose(np.array((spmattrn>0).sum(0))))
-spmatval = csr_matrix(spmatval)[:,colsums>20.]
-spmattrn = csr_matrix(spmattrn)[:,colsums>20.]
-spmattst = csr_matrix(spmattst)[:,colsums>20.]
-'''
-from sklearn.linear_model import Ridge
-print('[{}] Start to train ridge sag'.format(time.time() - start_time))
-model = Ridge(solver="sag", fit_intercept=True, random_state=205, alpha=3, max_iter = 10)
-model.fit(spmattrn, dtrain.target)
-print('[{}] Finished to train ridge sag'.format(time.time() - start_time))
-y_predrdg = np.expand_dims(model.predict(X=spmatval),1)
-yspredrdg = np.expand_dims(model.predict(X=spmattst),1)
-print('[{}] Finished to predict ridge sag'.format(time.time() - start_time))
-print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predrdg)))
-
 y_predbag = 0.4*y_predlgb+0.6*y_pred 
 yspredbag = 0.4*yspredlgb+0.6*yspred
 print("Bagged rmsle %s"%(eval_model(dvalid.price.values, y_predbag)))
 # Bagged rmsle 0.419434782864
+
+
+
+from sklearn.utils.sparsefuncs import mean_variance_axis
+
+colsums = np.squeeze(np.transpose(np.array((spmattrn>0).sum(0))))
+spmatval = csr_matrix(spmatval)[:,colsums>20.]
+spmattrn = csr_matrix(spmattrn)[:,colsums>20.]
+spmattst = csr_matrix(spmattst)[:,colsums>20.]
+
+sp_mean, sp_var = mean_variance_axis(csr_matrix(spmattrn), 0)
+spstd = (sp_var)**0.5
+
+spmattrn1 = spmattrn.multiply(spstd**-1)
+spmatval1 = spmatval.multiply(spstd**-1)
+spmattst1 = spmattst.multiply(spstd**-1)
+
+
+'''
+Start the Ridge
+'''
+
+
+from sklearn.linear_model import Ridge
+print('[{}] Start to train ridge sag'.format(time.time() - start_time))
+model = Ridge(solver='auto', fit_intercept=True, random_state=205, alpha=3, max_iter = 20)
+model.fit(spmattrn1, dtrain.target)
+print('[{}] Finished to train ridge sag'.format(time.time() - start_time))
+y_predrdg = np.expand_dims(model.predict(X=spmatval1),1)
+yspredrdg = np.expand_dims(model.predict(X=spmattst1),1)
+print('[{}] Finished to predict ridge sag'.format(time.time() - start_time))
+print("Ridge Sag rmsle %s"%(eval_model(dvalid.price.values, y_predrdg)))
+
+'''
+Start the Stack
+'''
+
+Xens    = np.column_stack((y_predlgb, y_pred, y_predrdg))
+Xenstst = np.column_stack((yspredlgb, yspred, yspredrdg))
+
+import itertools
+twoway = list(itertools.combinations(range(3), 2))
+for ii, jj in twoway:
+    Xens    = np.column_stack((Xens, Xens[:,ii] - Xens[:,jj]))
+    Xenstst = np.column_stack((Xenstst, Xenstst[:,ii] - Xenstst[:,jj]))
+    Xens    = np.column_stack((Xens, Xens[:,ii] * Xens[:,jj]))
+    Xenstst = np.column_stack((Xenstst, Xenstst[:,ii] * Xenstst[:,jj]))
+    
+Xens    = np.column_stack((Xens, dvalid.shipping))
+Xenstst = np.column_stack((Xenstst, test.shipping))
+
+for ii in range( len(y_pred_epochs)):
+    Xens    = np.column_stack((Xens, y_pred_epochs[ii]))
+    Xenstst = np.column_stack((Xenstst, yspred_epochs[ii]))
+
+Xensval, Xenstrn, y_ensval, y_enstrn = train_test_split(Xens, dvalid.target, random_state=233, train_size=0.50)
+
+d_train = lgb.Dataset(Xenstrn, label=y_enstrn)#, max_bin=1024)
+d_valid = lgb.Dataset(Xensval, label=y_ensval)#, max_bin=1024)
+#d_test  = lgb.Dataset(spmattst)#, max_bin=8192)
+watchlist = [d_train, d_valid]
+
+params = {
+    'learning_rate': 0.001,
+    'application': 'regression',
+    'max_depth': 4,
+    'verbosity': -1,
+    'metric': 'RMSE',
+    'feature_fraction': 0.2,
+    'nthread': threads
+}
+
+modellgb = lgb.train(params, train_set=d_train, num_boost_round=50000, valid_sets=watchlist, \
+early_stopping_rounds=1000, verbose_eval=250) 
+
+
+baseval = 0.4*Xensval[:, 0]+0.6*Xensval[:, 1]
+np.sqrt(np.average((y_ensval - baseval)**2))
+print('[{}] Baseline score...'.format(np.sqrt(np.average((y_ensval - baseval)**2))))
 
 
 print('[{}] Finished FITTING MODEL...'.format(time.time() - start_time))
