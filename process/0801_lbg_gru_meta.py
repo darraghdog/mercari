@@ -16,7 +16,6 @@ from collections import Counter
 from scipy.sparse import csr_matrix, hstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
-from nltk.tokenize.moses import MosesTokenizer
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -33,7 +32,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from keras.layers import Input, Dropout, Dense, BatchNormalization, \
     Activation, concatenate, GRU, Embedding, Flatten, Bidirectional, \
-    MaxPooling1D, Conv1D, Add, CuDNNLSTM, CuDNNGRU, Reshape
+    MaxPooling1D, Conv1D, Add, Reshape
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoard
 from keras import backend as K
@@ -43,8 +42,8 @@ from keras.utils import plot_model
 import warnings
 warnings.simplefilter(action='ignore')
 
-os.chdir('/home/darragh/mercari/data')
-#os.chdir('/Users/dhanley2/Documents/mercari/data')
+#os.chdir('/home/darragh/mercari/data')
+os.chdir('/Users/dhanley2/Documents/mercari/data')
 
 
 train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
@@ -69,45 +68,65 @@ print(train.shape)
 print(test.shape)
 print('[{}] Finished scaling test set...'.format(time.time() - start_time))
 
+
 emojis = re.compile( 
-    u"([^\u0101-\ufffd])"  
-    u"([^\x96-\xfc])" 
+    u"([\u0101-\ufffd])"   
+    "+", flags=re.UNICODE)
+foreign = re.compile( 
+    u"([\x96-\xfc])"   
     "+", flags=re.UNICODE)
 asterix = re.compile('[%s]' % '!"#%&()*,-./:;<=>?@[\\]^_`{|}~\t\n')   
-#print(special_pattern.sub(r'', text)) # no emoji
 
-#sent = test.iloc[23]
-
-@jit
 def count_grammar(sent):
     counter = []
-    for col in [0,1]:
-        if sent[col]!=sent[col]:
-            sent[col]=''
-        counter.append(len(sent[col].split(' ')))
-        counter.append(len(sent[col]))
-        counter.append(len(re.findall(r'[A-Z]',sent[col])))
-        counter.append(len(re.findall(r'[0-9]',sent[col])))
-        counter.append(len(re.findall(asterix,sent[col])))
-        counter.append(len(re.findall(emojis,sent[col])))
-    return counter
-
-def make_feat():
-    pool = mp.Pool(processes=threads)
-    trnfeat = np.array(pool.map(count_grammar, train[['item_description', 'name']].values), dtype=np.float16)
-    tstfeat = np.array(pool.map(count_grammar, test[['item_description', 'name']].values), dtype=np.float16)
-    pool.close
+    specials = []
+    if sent!=sent:
+        sent=''
+    s = sent
+    emojils   = re.findall(emojis,s) 
+    foreignls = re.findall(foreign,s)
+    asterixls = re.findall(asterix,s)
     
-    trnfeat = np.log1p(trnfeat)
-    tstfeat = np.log1p(tstfeat)
-    max_feat = trnfeat.max(axis=0)
-    trnfeat /= max_feat
-    tstfeat /= max_feat
-    return trnfeat.tolist(), tstfeat.tolist()
+    nwords    = s.split(' ')
+    counter.append(len(nwords))
+    counter.append(len(s))
+    counter.append(1.*len(s)/len(nwords))
+    counter.append(len(re.findall(r'[A-Z]',sent)))
+    counter.append(len(re.findall(r'[0-9]',sent)))
+    counter.append(len(emojils))
+    counter.append(len(foreignls))
+    counter.append(len(asterixls))
+    specials += emojils+asterixls+foreignls
+    return [counter, specials]
 
-train['lost_features'], test['lost_features'] = make_feat()
+
+def make_feat(col):
+    pool = mp.Pool(processes=threads)
+    feat = pool.map(count_grammar, col.tolist())
+    pool.close
+    return feat
+
+test['lost_features_name']  = make_feat(test['name'])
+train['lost_features_name'] = make_feat(train['name'])
+test['lost_features_dscr']  = make_feat(test['item_description'])
+train['lost_features_dscr'] = make_feat(train['item_description'])
+
+test ['summary_feat'] = [n[0]+d[0] for (n,d) in zip(test['lost_features_name'] , test['lost_features_name'])]
+train['summary_feat'] = [n[0]+d[0] for (n,d) in zip(train['lost_features_name'], train['lost_features_name'])]
+
+all_emojis = [n[1]+d[1] for (n,d) in zip(train['lost_features_name'], train['lost_features_name'])]
+import operator
+reduce(operator.concat, all_emojis)
+
+emoji_mapper = {}
+
+    
+
 
 print('[{}] Finished creating features...'.format(time.time() - start_time))
+
+
+
 
 print("Manual string correction...")
 tech_mapper = {
