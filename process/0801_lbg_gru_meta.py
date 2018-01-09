@@ -115,17 +115,19 @@ test ['summary_feat'] = [n[0]+d[0] for (n,d) in zip(test['lost_features_name'] ,
 train['summary_feat'] = [n[0]+d[0] for (n,d) in zip(train['lost_features_name'], train['lost_features_name'])]
 
 all_emojis = [n[1]+d[1] for (n,d) in zip(train['lost_features_name'], train['lost_features_name'])]
-import operator
-reduce(operator.concat, all_emojis)
+import itertools
+all_emojis = list(set(list(itertools.chain(*all_emojis))))
+emoji_mapper = dict(zip(all_emojis, range(len(all_emojis)) ))
 
-emoji_mapper = {}
+def map_emojis(var):
+    return [[emoji_mapper[m] for m in n[1] if m in emoji_mapper] for n in var]
 
-    
-
-
+test ['emoji_feat_name'] = map_emojis(test ['lost_features_name'])
+train['emoji_feat_name'] = map_emojis(train['lost_features_name'])
+test ['emoji_feat_dscr'] = map_emojis(test ['lost_features_dscr'])
+train['emoji_feat_dscr'] = map_emojis(train['lost_features_dscr'])
+  
 print('[{}] Finished creating features...'.format(time.time() - start_time))
-
-
 
 
 print("Manual string correction...")
@@ -642,11 +644,11 @@ print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_
 Start the lightgbm
 '''
 
-
+MAX_EMJ = max(emoji_mapper.keys)+1
 #llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
 #          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
 llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
-          ("seq_name_token", MAX_NTK)]
+          ("seq_name_token", MAX_NTK), ("emoji_feat_name", MAX_EMJ), ("emoji_feat_dscr", MAX_EMJ)]
 lcols = ["brand", "item_condition_id", "shipping", "category"]
 
 spmatval = hstack([col2sparse(dvalid[c_].tolist(), max_col = max_val) for (c_, max_val) in llcols] + \
@@ -696,11 +698,11 @@ for i in range(len(bcols)):
     
             
 spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean), 
-                   csr_matrix(np.array(dvalid["lost_features"].tolist()))])
+                   csr_matrix(np.array(dvalid["summary_feat"].tolist()))])
 spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean), 
-                   csr_matrix(np.array(dtrain["lost_features"].tolist()))])
+                   csr_matrix(np.array(dtrain["summary_feat"].tolist()))])
 spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean), 
-                   csr_matrix(np.array(test["lost_features"].tolist()))])
+                   csr_matrix(np.array(test["summary_feat"].tolist()))])
 
 print(spmatval.shape)
 print(spmattst.shape)
