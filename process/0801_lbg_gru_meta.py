@@ -644,7 +644,7 @@ print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_
 Start the lightgbm
 '''
 
-MAX_EMJ = max(emoji_mapper.keys)+1
+MAX_EMJ = max(emoji_mapper.values())+1
 #llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
 #          ("seq_name", MAX_NAM), ("seq_name_token", MAX_NTK)]
 llcols = [("seq_category_name_split", MAX_CAT), ("seq_item_description", MAX_DSC), \
