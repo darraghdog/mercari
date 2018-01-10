@@ -32,7 +32,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from keras.layers import Input, Dropout, Dense, BatchNormalization, \
     Activation, concatenate, GRU, Embedding, Flatten, Bidirectional, \
-    MaxPooling1D, Conv1D, Add, Reshape
+    MaxPooling1D, Conv1D, Add, Reshape, Lambda
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoard
 from keras import backend as K
@@ -41,6 +41,9 @@ from keras import initializers
 from keras.utils import plot_model
 import warnings
 warnings.simplefilter(action='ignore')
+from pympler.tracker import SummaryTracker
+tracker = SummaryTracker()
+
 
 #os.chdir('/home/darragh/mercari/data')
 os.chdir('/Users/dhanley2/Documents/mercari/data')
@@ -49,7 +52,11 @@ os.chdir('/Users/dhanley2/Documents/mercari/data')
 train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
 test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
 glove_file = '../feat/glove.6B.50d.txt'
-threads = 8
+threads = 2
+print_mem = False
+
+if print_mem:
+    tracker.print_diff()
 
 def col2sparse(var, max_col):
     row = []
@@ -126,9 +133,15 @@ test ['emoji_feat_name'] = map_emojis(test ['lost_features_name'])
 train['emoji_feat_name'] = map_emojis(train['lost_features_name'])
 test ['emoji_feat_dscr'] = map_emojis(test ['lost_features_dscr'])
 train['emoji_feat_dscr'] = map_emojis(train['lost_features_dscr'])
+test.drop(['lost_features_name', 'lost_features_dscr'], 1, inplace=True)
+train.drop(['lost_features_name', 'lost_features_dscr'], 1, inplace=True)
+del all_emojis
+gc.collect()
+
+if print_mem:
+    tracker.print_diff()
   
 print('[{}] Finished creating features...'.format(time.time() - start_time))
-
 
 print("Manual string correction...")
 tech_mapper = {
@@ -175,7 +188,8 @@ for col in ['name', 'item_description']:
     test[col] = pool.map(replace_maps, test[col].values)
 pool.close
 print('[{}] Finished replacing text...'.format(time.time() - start_time))
-
+if print_mem:
+    tracker.print_diff()
 
 #HANDLE MISSING VALUES
 print("Handling missing values...")
@@ -208,6 +222,8 @@ le.fit(np.hstack([train.brand_name, test.brand_name]))
 train['brand'] = le.transform(train.brand_name)
 test['brand'] = le.transform(test.brand_name)
 del le
+if print_mem:
+    tracker.print_diff()
 
 
 print("Remove bogus characters...")
@@ -257,6 +273,9 @@ train["category_name_split"] = train["category_name_split"].str.replace('/', ' '
 train.head()
 print('[{}] Finished PROCESSING CATEGORICAL DATA...'.format(time.time() - start_time))
 
+if print_mem:
+    tracker.print_diff()
+    
 from nltk.stem import PorterStemmer
 #porter.stem(word)
 
@@ -282,7 +301,8 @@ print('[{}] Finished Tokenizing text...'.format(time.time() - start_time))
 pool.close
 
 #np.sort(train['category_token'].unique()).tolist()
-
+if print_mem:
+    tracker.print_diff()
 
 '''
 New parts
@@ -406,10 +426,17 @@ train["seq_name_token"] =              fit_sequence(train.name_token.str.lower()
 test["seq_name_token"] =               fit_sequence(test.name_token.str.lower(), tok_raw_ntk, filt = False)
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 train.head()
+if print_mem:
+    tracker.print_diff()
 #EXTRACT DEVELOPTMENT TEST
 
 print('[{}] Embeddings loaded...'.format(time.time() - start_time))
 dtrain, dvalid = train_test_split(train, random_state=233, train_size=0.90)
+del train
+gc.collect()
+
+if print_mem:
+    tracker.print_diff()
 
 dtrain_ids = posn_to_sparse(dtrain, embedding_map)
 dvalid_ids = posn_to_sparse(dvalid, embedding_map)
@@ -431,6 +458,10 @@ densetst /= sd_
 print(dtrain.shape)
 print(densetrn.shape)
 
+print('[{}] Glove embedding created...'.format(time.time() - start_time))
+if print_mem:
+    tracker.print_diff()
+
 #PROCESS TEXT: RAW
 print("Text to seq process...")
 print("   Fitting tokenizer...")
@@ -440,27 +471,38 @@ MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
-MAX_CATEGORY = np.max([train.category.max(), test.category.max()])+1
-MAX_BRAND = np.max([train.brand.max(), test.brand.max()])+1
-MAX_CONDITION = np.max([train.item_condition_id.max(), 
+MAX_CATEGORY = np.max([dtrain.category.max(), test.category.max()])+1
+MAX_BRAND = np.max([dtrain.brand.max(), test.brand.max()])+1
+MAX_CONDITION = np.max([dtrain.item_condition_id.max(), 
                         test.item_condition_id.max()])+1
-    
+
+# https://stackoverflow.com/questions/44960558/concatenating-embedded-inputs-to-feed-recurrent-lstm-in-keras 
 def get_keras_data(dataset):
+    max_name = max([len(l) for l in dataset.seq_name])
+    max_item_desc = max([len(l) for l in dataset.seq_item_description])
+    batch_size = len(dataset.brand)
     X = {
         'name': pad_sequences(dataset.seq_name, 
-                              maxlen=max([len(l) for l in dataset.seq_name]))
+                              maxlen=max_name)
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
-                              maxlen=max([len(l) for l in dataset.seq_item_description]))
-        ,'brand': np.array(dataset.brand)
-        ,'category': np.array(dataset.category)
-        ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
-                              maxlen=max([len(l) for l in dataset.seq_category_name_split]))
-        ,'item_condition': np.array(dataset.item_condition_id)
+                              maxlen=max_item_desc)
+        
+        ,'brand_nm_seq': np.array(np.repeat(dataset.brand, max_name)).reshape(batch_size, -1)
+        ,'item_condition_nm_seq': np.array(np.repeat(dataset.item_condition_id, max_name)).reshape(batch_size, -1)
+        ,'category_nm_seq': np.array(np.repeat(dataset.category, max_name)).reshape(batch_size, -1)
+        ,'brand_ds_seq': np.array(np.repeat(dataset.brand, max_item_desc)).reshape(batch_size, -1)
+        ,'item_condition_ds_seq': np.array(np.repeat(dataset.item_condition_id, max_item_desc)).reshape(batch_size, -1)
+        ,'category_ds_seq': np.array(np.repeat(dataset.category, max_item_desc)).reshape(batch_size, -1)
+
         ,'num_vars': np.array(dataset[["shipping"]])
     }
-    return X   
+
+    return X  
+
+#get_keras_data(dtrain[:8])
+
 
 def eval_model(y_true, val_preds):
     val_preds = np.expm1(val_preds)
@@ -532,45 +574,66 @@ dr = 0.1
 
 from keras.layers import GlobalMaxPooling1D
 def get_model():
+    def repeat(x,length):
+        return K.reshape(K.repeat(x,length),(K.shape(x)[0],length,K.shape(x)[1]))
 
     ##Inputs
     name = Input(shape=[None], name="name")
+    brand_nm_seq = Input(shape=[None], name="brand_nm_seq")
+    category_nm_seq = Input(shape=[None], name="category_nm_seq")
+    item_condition_nm_seq = Input(shape=[None], name="item_condition_nm_seq")
+    brand_ds_seq = Input(shape=[None], name="brand_ds_seq")
+    category_ds_seq = Input(shape=[None], name="category_ds_seq")
+    item_condition_ds_seq = Input(shape=[None], name="item_condition_ds_seq")
+    
     ntk = Input(shape=[None], name="ntk")
     item_desc = Input(shape=[None], name="item_desc")
-    category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
-    item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[1], name="num_vars")
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
     
     #Embeddings layers
-    emb_size = 60
-    emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
+    emb_size = 32
+    emb_name                = Embedding(MAX_NAM, emb_size//2)(name)
+    
+    emb_brand = Embedding(MAX_BRAND, 4)
+    emb_categ = Embedding(MAX_CATEGORY, 4)
+    emb_condn = Embedding(MAX_CONDITION, 4)
+    
+    emb_brand_nm_seq           = emb_brand(brand_nm_seq) 
+    emb_item_condition_nm_seq  = emb_condn(item_condition_nm_seq) 
+    emb_category_nm_seq        = emb_categ(category_nm_seq) 
+    emb_brand_ds_seq           = emb_brand(brand_ds_seq) 
+    emb_item_condition_ds_seq  = emb_condn(item_condition_ds_seq) 
+    emb_category_ds_seq        = emb_categ(category_ds_seq) 
+    
     emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
     emb_item_desc           = Embedding(MAX_DSC, emb_size//2)(item_desc) 
-    emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
-    emb_brand               = Embedding(MAX_BRAND, 8)(brand)
-    emb_item_condition      = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    rnn_layer1 = GRU(8, recurrent_dropout=0.0) (emb_item_desc)
-    rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
-    rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
+    emb_name_merged = concatenate([emb_brand_nm_seq,
+                                   emb_name, 
+                                   emb_category_nm_seq,
+                                   emb_item_condition_nm_seq], axis=-1)
+    emb_desc_merged = concatenate([emb_brand_ds_seq,
+                                   emb_item_desc, 
+                                   emb_category_ds_seq,
+                                   emb_item_condition_ds_seq], axis=-1)
+    
+    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_desc_merged)
+    rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name_merged)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
     
     
-    dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
-    dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
+    dense_l = Dropout(dr*3)(Dense(128,activation='relu') (dense_name))
+    dense_l = Dropout(dr*3)(Dense(16,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
-        Flatten() (emb_brand)
-        , Flatten() (emb_item_condition)
-        , rnn_layer1
-        , rnn_layer2
+        rnn_layer1
         , rnn_layer3
         , rnn_layer4
-        , dense_l
         , num_vars
+        , dense_l
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
@@ -579,9 +642,10 @@ def get_model():
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name
-                   , category_name_split #,category
-                   , item_condition, num_vars], output)
+    model = Model([name, ntk, item_desc, dense_name # , brand
+                   , brand_nm_seq, item_condition_nm_seq, brand_ds_seq, item_condition_ds_seq
+                   , category_nm_seq, category_ds_seq
+                   , num_vars], output)
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
                   optimizer=optimizer)
@@ -589,10 +653,10 @@ def get_model():
 
 print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 
-epochs = 2
+epochs = 1
 batchSize = 512 * 4
 steps = (dtrain.shape[0]/batchSize+1)*epochs
-lr_init, lr_fin = 0.015, 0.012
+lr_init, lr_fin = 0.013, 0.011
 lr_decay  = (lr_init - lr_fin)/steps
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
@@ -607,12 +671,11 @@ model.fit_generator(
                     , verbose=1
                     )
 
-
 val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-for c, lr in enumerate([0.010, 0.009,0.008]):#, 0.006])
+for c, lr in enumerate([0.010, 0.010, 0.010]):
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
                         trn_generator(densetrn, dtrain, dtrain.target, batchSize)
@@ -638,6 +701,7 @@ y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
 # Bagged Epoch 5 rmsle 0.429088545511
+
 
 
 '''
@@ -695,13 +759,13 @@ for i in range(len(bcols)):
 for i in range(len(bcols)):
     val_bayes_mean[:, i] = bayesMean(dtrain, dvalid, t_col = bcols[i])
     tst_bayes_mean[:, i] = bayesMean(dtrain, test, t_col = bcols[i])
-    
+        
             
 spmatval = hstack([spmatval, csr_matrix(spmatval.sum(axis=1)), csr_matrix(val_bayes_mean), 
                    csr_matrix(np.array(dvalid["summary_feat"].tolist()))])
 spmattrn = hstack([spmattrn, csr_matrix(spmattrn.sum(axis=1)), csr_matrix(trn_bayes_mean), 
                    csr_matrix(np.array(dtrain["summary_feat"].tolist()))])
-spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean), 
+spmattst = hstack([spmattst, csr_matrix(spmattst.sum(axis=1)), csr_matrix(tst_bayes_mean),  
                    csr_matrix(np.array(test["summary_feat"].tolist()))])
 
 print(spmatval.shape)
@@ -718,14 +782,14 @@ params = {
     'learning_rate': 0.75,
     'application': 'regression',
     'max_depth': 3,
-    'num_leaves': 99,
+    #'num_leaves': 99,
     'verbosity': -1,
     'metric': 'RMSE',
     'nthread': threads,
     'max_bin' : 1024
 }
 
-modellgb = lgb.train(params, train_set=d_train, num_boost_round=5000, valid_sets=watchlist, \
+modellgb = lgb.train(params, train_set=d_train, num_boost_round=7000, valid_sets=watchlist, \
 early_stopping_rounds=500, verbose_eval=250) 
 #[1000]  training's rmse: 0.458649       valid_1's rmse: 0.468744
 #[2000]  training's rmse: 0.439511       valid_1's rmse: 0.456902
