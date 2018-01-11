@@ -211,11 +211,6 @@ sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_categor
 
 print('[{}] Create sparse merge completed'.format(time.time() - start_time))
 
-#    pd.to_pickle((sparse_merge, y), "xy.pkl")
-# else:
-#    nrow_train, nrow_test= 1481661, 1482535
-#    sparse_merge, y = pd.read_pickle("xy.pkl")
-
 # Remove features with document frequency <=1
 print(sparse_merge.shape)
 mask = np.array(np.clip(sparse_merge.getnnz(axis=0) - 1, 0, 1), dtype=bool)
@@ -229,18 +224,6 @@ train_X, train_y = X, y
 if develop:
     train_X, valid_X, train_y, valid_y = train_test_split(X, y, train_size=0.90, random_state=233)
 
-
-model = FTRL(alpha=0.01, beta=0.1, L1=0.00001, L2=1.0, D=sparse_merge.shape[1], iters=50, inv_link="identity", threads=1)
-
-model.fit(train_X, train_y)
-print('[{}] Train FTRL completed'.format(time.time() - start_time))
-if develop:
-    predsf = model.predict(X=valid_X)
-    print("FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsf))) # 'FTRL dev RMSLE:', 0.461246; Full data 0.433810
-
-predsF = model.predict(X_test)
-print('[{}] Predict FTRL completed'.format(time.time() - start_time))
-
 model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
                 D_fm=200, e_noise=0.0001, iters=15, inv_link="identity", threads=4)
 
@@ -252,70 +235,3 @@ if develop:
 
 predsFM = model.predict(X_test)
 print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
-
-
-params = {
-    'learning_rate': 0.6,
-    'application': 'regression',
-    'max_depth': 4,
-    'num_leaves': 31,
-    'verbosity': -1,
-    'metric': 'RMSE',
-    'data_random_seed': 1,
-    'bagging_fraction': 0.6,
-    'bagging_freq': 5,
-    'feature_fraction': 0.6,
-    'nthread': 8,
-    'min_data_in_leaf': 100,
-    'max_bin': 31
-}
-
-# Remove features with document frequency <=100
-print(sparse_merge.shape)
-mask = np.array(np.clip(sparse_merge.getnnz(axis=0) - 100, 0, 1), dtype=bool)
-sparse_merge = sparse_merge[:, mask]
-X = sparse_merge[:nrow_train]
-X_test = sparse_merge[nrow_test:]
-print(sparse_merge.shape)
-
-train_X, train_y = X, y
-if develop:
-    train_X, valid_X, train_y, valid_y = train_test_split(X, y, test_size=0.05, random_state=100)
-
-print('[{}] Start LGB ...'.format(time.time() - start_time))
-
-d_train = lgb.Dataset(train_X, label=train_y)
-watchlist = [d_train]
-if develop:
-    d_valid = lgb.Dataset(valid_X, label=valid_y)
-    watchlist = [d_train, d_valid]
-
-
-model = lgb.train(params, train_set=d_train, num_boost_round=6000, valid_sets=watchlist, \
-                  early_stopping_rounds=1000, verbose_eval=250)
-
-if develop:
-    predsl = model.predict(valid_X)
-    print("LGB dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsl))) # LGB dev RMSLE:', 0.4597578
-    
-
-print("LGB dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsf)*0.1 + np.expm1(predsfm)*0.9))# + np.expm1(predsl)*0.3 ))
-
-#[1000]  training's rmse: 0.458649       valid_1's rmse: 0.468744
-#[2000]  training's rmse: 0.439511       valid_1's rmse: 0.456902
-#[3000]  training's rmse: 0.428381       valid_1's rmse: 0.451962
-#[4000]  training's rmse: 0.420007       valid_1's rmse: 0.44879
-#[5000]  training's rmse: 0.412979       valid_1's rmse: 0.446423
-#[6000]  training's rmse: 0.407273       valid_1's rmse: 0.444832
-#[7000]  training's rmse: 0.402065       valid_1's rmse: 0.443914
-    
-predsL = model.predict(X_test)
-
-print('[{}] Predict LGB completed.'.format(time.time() - start_time))
-
-preds = (predsF * 0.2 + predsL * 0.3 + predsFM * 0.5)
-
-submission['price'] = np.expm1(preds)
-submission.to_csv("submission_wordbatch_ftrl_fm_lgb.csv", index=False)
-
-
