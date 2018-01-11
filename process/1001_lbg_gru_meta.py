@@ -277,10 +277,6 @@ if print_mem:
     tracker.print_diff()
     
 from nltk.stem import PorterStemmer
-# https://stackoverflow.com/questions/19560498/faster-way-to-remove-stop-words-in-python
-
-from nltk.corpus import stopwords
-stop_words = set(stopwords.words('english'))
 #porter.stem(word)
 
 toktok = ToktokTokenizer()
@@ -288,9 +284,7 @@ porter = PorterStemmer()
 tokSentMap = {}
 def tokSent(sent):
     sent = sent.replace('/', ' ')
-    sent = ' '.join([w for w in sent.split() if w not in stop_words])
-    tokens = [t for t in toktok.tokenize(rgx.sub('', sent)) if t not in stop_words]
-    return " ".join(tokens)
+    return " ".join(toktok.tokenize(rgx.sub('', sent)))
 
 rgx = re.compile('[%s]' % '!"#%&()*,-./:;<=>?@[\\]^_`{|}~\t\n')   
 
@@ -324,7 +318,7 @@ wordlist = []
 for col in ['name_token', 'category_token', 'brand_token']:
     for dt in train, test:
         flat_counter = list_flatten(dt[[col]].values[:,0])
-        wordlist += [k for (k, v) in flat_counter.items() if v>10]
+        wordlist += [k for (k, v) in flat_counter.items() if v>3]
         wordlist = list(set(wordlist))
 wordlist = set(wordlist)
 
@@ -366,6 +360,9 @@ def posn_to_sparse(dt, embedding_map):
     shape_ = (dt.shape[0], len(embedding_map.keys())) 
     dt_ids = csr_matrix((spdata, (sprow, spcol)), shape=shape_)
     return dt_ids
+
+from nltk.corpus import stopwords
+stop_words =  set(stopwords.words('english'))
                  
 @jit
 def myTokenizerFitJit(strls, max_words = 25000, filt = True):
@@ -375,8 +372,8 @@ def myTokenizerFitJit(strls, max_words = 25000, filt = True):
             sent = rgx.sub(' ', sent)
         for s in sent.split(' '):
             if s!= '':
-                if s not in stop_words:
-                    list_.append(s)
+                # if s not in stop_words:
+                list_.append(s)
     return Counter(list_).most_common(max_words)
 
 def myTokenizerFit(strls, max_words = 25000):
@@ -412,10 +409,11 @@ print(fit_sequence_check(sent , tok_raw_nam))
 
 tok_raw_cat = myTokenizerFit(train.category_name_split.str.lower().unique(), max_words = 800)
 #tok_raw_cat = myTokenizerFit(train.category_token.str.lower().unique(), max_words = 800)
-tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 25000)
+tok_raw_nam = myTokenizerFit(train.name.str.lower().unique(), max_words = 50000)
 #tok_raw_dsc = myTokenizerFit(train.item_description.str.lower().unique(), max_words = 25000)
-tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), max_words = 25000)
-tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 50000)
+tok_raw_dsc = myTokenizerFit(train.description_token.str.lower().unique(), max_words = 50000)
+tok_raw_ntk = myTokenizerFit(train.name_token.str.lower().unique(), max_words = 100000)
+
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
 train["seq_category_name_split"] =     fit_sequence(train.category_name_split.str.lower(), tok_raw_cat)
@@ -453,8 +451,6 @@ densetrn = dtrain_ids.dot(embeddings_matrix)#.todense()
 denseval = dvalid_ids.dot(embeddings_matrix)#.todense()
 densetst = test_ids.dot(embeddings_matrix)#.todense()
 densetst
-
-'''
 mean_, sd_ = densetrn.mean(), densetrn.std()
 densetrn -= mean_
 denseval -= mean_
@@ -462,7 +458,6 @@ densetst -= mean_
 densetrn /= sd_
 denseval /= sd_
 densetst /= sd_
-'''
 
 print(dtrain.shape)
 print(densetrn.shape)
@@ -489,7 +484,6 @@ MAX_CONDITION = np.max([dtrain.item_condition_id.max(),
 def get_keras_data(dataset):
     max_name = max([len(l) for l in dataset.seq_name])
     max_item_desc = max([len(l) for l in dataset.seq_item_description])
-    #print max_item_desc
     batch_size = len(dataset.brand)
     X = {
         'name': pad_sequences(dataset.seq_name, 
@@ -505,8 +499,6 @@ def get_keras_data(dataset):
         ,'brand_ds_seq': np.array(np.repeat(dataset.brand, max_item_desc)).reshape(batch_size, -1)
         ,'item_condition_ds_seq': np.array(np.repeat(dataset.item_condition_id, max_item_desc)).reshape(batch_size, -1)
         ,'category_ds_seq': np.array(np.repeat(dataset.category, max_item_desc)).reshape(batch_size, -1)
-        ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
-                              maxlen=max([len(l) for l in dataset.seq_category_name_split]))
 
         ,'num_vars': np.array(dataset[["shipping"]])
     }
@@ -591,7 +583,6 @@ def get_model():
 
     ##Inputs
     name = Input(shape=[None], name="name")
-    category_name_split = Input(shape=[None], name="category_name_split")
     brand_nm_seq = Input(shape=[None], name="brand_nm_seq")
     category_nm_seq = Input(shape=[None], name="category_nm_seq")
     item_condition_nm_seq = Input(shape=[None], name="item_condition_nm_seq")
@@ -606,7 +597,7 @@ def get_model():
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
     
     #Embeddings layers
-    emb_size = 48
+    emb_size = 192#32
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name)
     
     emb_brand = Embedding(MAX_BRAND, 4)
@@ -620,7 +611,6 @@ def get_model():
     emb_item_condition_ds_seq  = emb_condn(item_condition_ds_seq) 
     emb_category_ds_seq        = emb_categ(category_ds_seq) 
     
-    #emb_category_name_split = Embedding(MAX_CAT, emb_size//6)(category_name_split)     
     emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
     emb_item_desc           = Embedding(MAX_DSC, emb_size//2)(item_desc) 
     
@@ -633,19 +623,17 @@ def get_model():
                                    emb_category_ds_seq,
                                    emb_item_condition_ds_seq], axis=-1)
     
-    rnn_layer1 = GRU(24, recurrent_dropout=0.0) (emb_desc_merged)
-    #rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
-    rnn_layer3 = GRU(16, recurrent_dropout=0.0) (emb_name_merged)
-    rnn_layer4 = GRU(16, recurrent_dropout=0.0) (emb_ntk)
+    rnn_layer1 = GRU(32, recurrent_dropout=0.0) (emb_desc_merged)
+    rnn_layer3 = GRU(32, recurrent_dropout=0.0) (emb_name_merged)
+    rnn_layer4 = GRU(32, recurrent_dropout=0.0) (emb_ntk)
     
     
     dense_l = Dropout(dr*3)(Dense(128,activation='relu') (dense_name))
-    dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
+    dense_l = Dropout(dr*3)(Dense(16,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
         rnn_layer1
-        #, rnn_layer2
         , rnn_layer3
         , rnn_layer4
         , num_vars
@@ -658,7 +646,7 @@ def get_model():
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, ntk, item_desc, dense_name, category_name_split # , brand
+    model = Model([name, ntk, item_desc, dense_name # , brand
                    , brand_nm_seq, item_condition_nm_seq, brand_ds_seq, item_condition_ds_seq
                    , category_nm_seq, category_ds_seq
                    , num_vars], output)
@@ -672,7 +660,7 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 epochs = 2
 batchSize = 512 * 4
 steps = (dtrain.shape[0]/batchSize+1)*epochs
-lr_init, lr_fin = 0.014, 0.012
+lr_init, lr_fin = 0.015, 0.012
 lr_decay  = (lr_init - lr_fin)/steps
 model = get_model()
 K.set_value(model.optimizer.lr, lr_init)
@@ -691,7 +679,7 @@ val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvali
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-for c, lr in enumerate([0.010, 0.010, 0.010]):
+for c, lr in enumerate([0.009, 0.008]): # , 0.007, 0.006
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
                         trn_generator(densetrn, dtrain, dtrain.target, batchSize)
@@ -717,6 +705,8 @@ y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
 # Bagged Epoch 5 rmsle 0.429088545511
+
+
 
 '''
 Start the lightgbm
