@@ -229,7 +229,7 @@ train_X, train_y = X, y
 if develop:
     train_X, valid_X, train_y, valid_y = train_test_split(X, y, train_size=0.90, random_state=233)
 
-
+'''
 model = FTRL(alpha=0.01, beta=0.1, L1=0.00001, L2=1.0, D=sparse_merge.shape[1], iters=50, inv_link="identity", threads=1)
 
 model.fit(train_X, train_y)
@@ -240,6 +240,7 @@ if develop:
 
 predsF = model.predict(X_test)
 print('[{}] Predict FTRL completed'.format(time.time() - start_time))
+'''
 
 model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
                 D_fm=200, e_noise=0.0001, iters=15, inv_link="identity", threads=4)
@@ -253,7 +254,7 @@ if develop:
 predsFM = model.predict(X_test)
 print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
 
-
+'''
 params = {
     'learning_rate': 0.6,
     'application': 'regression',
@@ -318,4 +319,4 @@ preds = (predsF * 0.2 + predsL * 0.3 + predsFM * 0.5)
 submission['price'] = np.expm1(preds)
 submission.to_csv("submission_wordbatch_ftrl_fm_lgb.csv", index=False)
 
-
+'''
