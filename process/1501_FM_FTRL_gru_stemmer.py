@@ -171,7 +171,7 @@ def getFMFTRL():
     '''
     Encode Original Strings
     '''
-    for col in ['category_name', 'item_description', 'name']:    
+    for col in ['item_description', 'name']:    
         wb = CountVectorizer()
         if 'X_orig' not in locals():
             X_orig = wb.fit_transform(merge[col])
@@ -179,9 +179,11 @@ def getFMFTRL():
             X_orig = hstack((X_orig, wb.fit_transform(merge[col])))
         print ('Shape of original hash', X_orig.shape)
     X_orig = X_orig.tocsr()
-    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    
+    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 3, 0, 1), dtype=bool)]
+    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 100, 1, 0), dtype=bool)]    
     print ('Shape of original hash', X_orig.shape)
-        
+    X_orig = X_orig.tocoo()
     
     '''
     Stemmer
@@ -207,23 +209,19 @@ def getFMFTRL():
     def _removenonalphanumericchars(txtwords):
         return [[string.join([c for c in w if _alphanumre.search(c) is not None], "") for w in t] for t in txtwords]
     
-    def _stemlastword(txtwords):
-        return [t[:-1] + [stemmer.stemWord(t[-1])] for t in txtwords if len(t) > 0]
     
     def _stripallwhitespace(txts):
         return [_wsre.sub("", txt) for txt in txts]
     stemmer = Stemmer.Stemmer("english")
 
     def textpreprocess(txt, 
-                       sentencetokenize=True, 
-                       removeblanklines=True, 
+                       sentencetokenize=False, 
                        replacehyphenbyspace=True, 
-                       wordtokenize=True,
+                       wordtokenize=False,
                        lowercase=True,
                        stem=True, 
                        removenonalphanumericchars=True, 
-                       stemlastword=False, 
-                       stripallwhitespace=False):
+                       stripallwhitespace=True):
         """
         Note: For html2text, one could also use NCleaner (common.html2text.batch_nclean)
         Note: One could improve the sentence tokenization, by using the
@@ -236,16 +234,9 @@ def getFMFTRL():
             txts = nltk.word_tokenize(txt)
             #txts = tokenizer.tokenize(txt.split())
         else:
-            txts = [txt]
+            txts = txt.split()
         txt = None
-    
-        if removeblanklines:
-            newtxts = []
-            for t in txts:
-                if len(string.strip(t)) > 0:
-                    newtxts.append(t)
-            txts = newtxts
-    
+        
         if replacehyphenbyspace:
             txts = [t.replace("-", " ") for t in txts]
     
@@ -268,21 +259,24 @@ def getFMFTRL():
     
         txtwords = [[w for w in t if w != ""] for t in txtwords]
     
-        if stemlastword:
-            txtwords = _stemlastword(txtwords)
-    
         txts = [string.join(words) for words in txtwords]
     
         if stripallwhitespace:
-            txts = _stripallwhitespace(txts)
+            for _ in range(2):
+                txts = _stripallwhitespace(txts)
 
         return string.join(txts, sep=" ")
 
+    print('[{}] Start stemming'.format(time.time() - start_time))
+    a = [textpreprocess(s) for s in merge["name"]]
+    print('[{}] Finish stemming'.format(time.time() - start_time))
+
+    txt = merge['name'].values[20]
     
     import multiprocessing as mp
     pool = mp.Pool(processes=4)
     merge['stem_name'] =  [textpreprocess(s) for s in merge["name"]]
-    merge['stem_item_description'] =  [textpreprocess(s) for s in merge["item_description"]]
+    #merge['stem_item_description'] =  [textpreprocess(s) for s in merge["item_description"]]
     pool.close()
     
     print('[{}] Stemming completed'.format(time.time() - start_time))
