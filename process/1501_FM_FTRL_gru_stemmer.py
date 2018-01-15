@@ -44,9 +44,9 @@ import psutil
 
 #Add https://www.kaggle.com/anttip/wordbatch to your kernel Data Sources, 
 #until Kaggle admins fix the wordbatch pip package installation
+sys.path.insert(0, '/Users/dhanley2/Documents/Wordbatch')
 sys.path.insert(0, '../input/wordbatch/wordbatch/')
 import wordbatch
-
 from wordbatch.extractors import WordBag, WordHash
 from wordbatch.models import FTRL, FM_FTRL
 
@@ -125,13 +125,13 @@ print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 cpuStats()
 
 def getFMFTRL():
+    os.chdir('/Users/dhanley2/Documents/mercari/data')
     train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
     test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
     glove_file = '../feat/glove.6B.50d.txt'
     threads = 4
     save_dir = '../feat'
-    
-    
+       
     print('[{}] Finished to load data'.format(time.time() - start_time))
     print('Train shape: ', train.shape)
     print('Test shape: ', test.shape)
@@ -169,6 +169,21 @@ def getFMFTRL():
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
     
     '''
+    Encode Original Strings
+    '''
+    for col in ['category_name', 'item_description', 'name']:    
+        wb = CountVectorizer()
+        if 'X_orig' not in locals():
+            X_orig = wb.fit_transform(merge[col])
+        else:
+            X_orig = hstack((X_orig, wb.fit_transform(merge[col])))
+        print ('Shape of original hash', X_orig.shape)
+    X_orig = X_orig.tocsr()
+    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    print ('Shape of original hash', X_orig.shape)
+        
+    
+    '''
     Stemmer
     '''
     # https://github.com/skbly7/usefulness/blob/ed11cd55080d553cf62873999a5e00b154057fbc/textpreprocess.py
@@ -177,6 +192,8 @@ def getFMFTRL():
     import Stemmer
     import string
     ps = Stemmer.Stemmer("english")
+    _wsre = re.compile("\s+")
+    _alphanumre = re.compile("[\w\-\' ]", re.UNICODE)
     def _removestopwords(txtwords):
         global stoplist
     #    stoplist = stopwords.words("english")
@@ -267,6 +284,8 @@ def getFMFTRL():
     merge['stem_name'] =  [textpreprocess(s) for s in merge["name"]]
     merge['stem_item_description'] =  [textpreprocess(s) for s in merge["item_description"]]
     pool.close()
+    
+    print('[{}] Stemming completed'.format(time.time() - start_time))
     
     '''
     Crossed columns
