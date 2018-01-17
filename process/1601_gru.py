@@ -1,5 +1,4 @@
 # encoding=utf8  
-import lightgbm as lgb
 import sys  
 #reload(sys)  
 #sys.setdefaultencoding('utf8')
@@ -14,7 +13,7 @@ from nltk.tokenize import ToktokTokenizer
 from nltk.stem import PorterStemmer
 import pandas as pd
 import tensorflow as tf
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler, LabelBinarizer
 from keras.preprocessing.text import Tokenizer
 import multiprocessing as mp
 def _get_session():
@@ -31,16 +30,17 @@ from keras.layers import Input, Dropout, Dense, BatchNormalization, \
 from keras.models import Model
 from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoard
 from keras import backend as K
-from keras import optimizers
-from keras import initializers
+from keras import optimizers, initializers
 from keras.utils import plot_model
 import warnings
 warnings.simplefilter(action='ignore')
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.preprocessing import LabelBinarizer
-from sklearn.model_selection import train_test_split
 import lightgbm as lgb
 import psutil
+
+from pyfasttext import FastText
+import fasttext
+from tqdm import tqdm 
 
 #Add https://www.kaggle.com/anttip/wordbatch to your kernel Data Sources, 
 #until Kaggle admins fix the wordbatch pip package installation
@@ -183,38 +183,6 @@ gc.collect()
 cpuStats()
 
 '''
-fasttext mats
-'''
-fonm = open('ftext_name.txt','w')
-#fods = open('ftext_dscr.txt','w')
-for nm, ct, ds in zip(merge.name.tolist(), merge.category_name.str.replace('/', ' ').tolist(),
-                      merge.item_description.tolist()):
-    fonm.write('%s %s\n'%(ct.encode('ascii', 'ignore'),
-                                 nm.encode('ascii', 'ignore')))
-#    fods.write('%s %s %s\n'%(ct.encode('ascii', 'ignore'),
-#                                 nm.encode('ascii', 'ignore'),
-#                                 ds.encode('ascii', 'ignore')))
-fonm.close()
-#fods.close()
-
-from pyfasttext import FastText
-import fasttext
-from tqdm import tqdm 
-
-
-print('[{}] Start fasttext training'.format(time.time() - start_time))
-model = fasttext.cbow('ftext_name.txt', 'model', dim=32, ws = 5, lr = .1, min_count  = 1, thread = 4, epoch = 10, silent=0)
-modelcb = FastText('model.bin')
-print('[{}] Start fasttext mat creation'.format(time.time() - start_time))
-
-ftmat = np.zeros((merge.shape[0], 32))
-for c, vals in tqdm(enumerate(merge[['category_name', 'name']].values)):
-    ftmat[c] = modelcb.get_numpy_sentence_vector('%s %s'%(vals[0].replace('/', ' '), vals[1]))
-ftmat = pd.DataFrame(ftmat)
-print('[{}] Finished fasttext mat creation'.format(time.time() - start_time))
-ftmat.head()
-
-'''
 GRU
 '''
 
@@ -260,6 +228,9 @@ for col in ['name', 'item_description']:
     merge[col] = pool.map(replace_maps, merge[col].values)
 pool.close
 print('[{}] Finished replacing text...'.format(time.time() - start_time))
+
+
+
 
 
 print("Handling categorical variables...")
@@ -409,9 +380,9 @@ tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
 gc.collect()
-tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 25000)
+tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 100000)
 gc.collect()
-tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 50000)
+tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 100000)
 gc.collect()
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
@@ -427,6 +398,65 @@ print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 merge.head()
 #EXTRACT DEVELOPTMENT TEST
 cpuStats() 
+
+'''
+fasttext mats
+'''
+fonm = open('ftext_name.txt','w')
+for nm, ct, ds in zip(merge.name_token.str.lower(),
+                      merge.category_name_split.str.lower(),
+                        merge.description_token.str.lower()):
+    fonm.write('%s %s %s\n'%(ct.encode('ascii', 'ignore').lower(),
+                             ds.encode('ascii', 'ignore').lower(),
+                                 nm.encode('ascii', 'ignore').lower()))
+fonm.close()
+
+print('[{}] Start fasttext training'.format(time.time() - start_time))
+model = fasttext.cbow('ftext_name.txt', 'model', dim=24, ws = 4, lr = .05, min_count  = 1, thread = 8, epoch = 4, silent=0)
+modelcb = FastText('model.bin')
+print('[{}] Start fasttext mat creation'.format(time.time() - start_time))
+
+
+ftmat = np.zeros((merge.shape[0], 24))
+for c, vals in tqdm(enumerate(merge[['category_name', 'name']].values)):
+    ftmat[c] = modelcb.get_numpy_sentence_vector('%s %s'%(vals[0].replace('/', ' '), vals[1]))
+ftmat = pd.DataFrame(ftmat)
+print('[{}] Finished fasttext mat creation'.format(time.time() - start_time))
+ftmat.head()
+
+'''
+def make_weights(dict_):
+    embmat = np.zeros((len(dict_.keys())+1, 24))
+    for k, v in dict_.items():
+        embmat[v] = modelcb[k]
+    return embmat
+
+embmatcat = make_weights(tok_raw_cat)
+embmatnam = make_weights(tok_raw_nam)
+embmatdsc = make_weights(tok_raw_dsc)
+embmatntk = make_weights(tok_raw_ntk)
+'''
+
+
+
+def make_glove_weights(dict_):
+    def get_coefs(word,*arr): return word, np.asarray(arr, dtype='float32')
+    embeddings_index = dict(get_coefs(*o.strip().split()) for o in open(glove_file))
+    all_embs = np.stack(embeddings_index.values())
+    emb_mean,emb_std = all_embs.mean(), all_embs.std()
+    embedding_matrix = np.random.normal(emb_mean, emb_std, (max(dict_.values()), 50))
+    keys = set(embeddings_index.keys())
+    counter = 0
+    for k, v in tqdm(dict_.items()):
+        if k not in keys:
+            continue
+        counter += 1
+        embedding_matrix[v] = embeddings_index.get(k)
+    print('Found matches for ', counter)
+    return embedding_matrix
+
+embmatdsc = make_glove_weights(tok_raw_dsc)
+embmatntk = make_glove_weights(tok_raw_ntk)
 
 '''
 # Make a sparse matrix of the ids of words
@@ -556,22 +586,22 @@ def get_model():
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
     
     #Embeddings layers
-    emb_size = 60
-    emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
-    emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
-    emb_item_desc           = Embedding(MAX_DSC, emb_size)(item_desc) 
-    emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
-    emb_brand               = Embedding(MAX_BRAND, 8)(brand)
+    emb_size = 50
+    emb_name                = Embedding(MAX_NAM, emb_size)(name) 
+    #emb_name                = Embedding(embmatnam.shape[0], emb_size, weights=[embmatnam], trainable=False)(name) 
+    emb_ntk                 = Embedding(embmatntk.shape[0], emb_size, weights=[embmatntk], trainable=True)(ntk) 
+    emb_item_desc           = Embedding(embmatdsc.shape[0], emb_size, weights=[embmatdsc], trainable=True)(item_desc) 
+    emb_category_name_split = Embedding(MAX_CAT, emb_size//2)(category_name_split) 
+    emb_brand               = Embedding(MAX_BRAND, 15)(brand)
     emb_item_condition      = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    rnn_layer1 = GRU(16, recurrent_dropout=0.0) (emb_item_desc)
-    rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
-    rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
-    rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
-    
+    rnn_layer1 = GRU(64, recurrent_dropout=0.2) (emb_item_desc)
+    rnn_layer2 = GRU(32, recurrent_dropout=0.0) (emb_category_name_split)
+    rnn_layer3 = GRU(64, recurrent_dropout=0.2) (emb_name)
+    rnn_layer4 = GRU(64, recurrent_dropout=0.2) (emb_ntk)
     
     #dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
-    #dense_l = Dropout(dr)(Dense(32,activation='relu') (dense_name))
+    dense_l = Dropout(dr)(Dense(32,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
@@ -581,7 +611,7 @@ def get_model():
         , rnn_layer2
         , rnn_layer3
         , rnn_layer4
-        , dense_name
+        , dense_l
         , num_vars
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
