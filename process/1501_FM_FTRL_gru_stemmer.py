@@ -44,7 +44,7 @@ import psutil
 
 #Add https://www.kaggle.com/anttip/wordbatch to your kernel Data Sources, 
 #until Kaggle admins fix the wordbatch pip package installation
-sys.path.insert(0, '/Users/dhanley2/Documents/Wordbatch')
+#sys.path.insert(0, '/Users/dhanley2/Documents/Wordbatch')
 sys.path.insert(0, '../input/wordbatch/wordbatch/')
 import wordbatch
 from wordbatch.extractors import WordBag, WordHash
@@ -125,7 +125,8 @@ print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 cpuStats()
 
 def getFMFTRL():
-    os.chdir('/Users/dhanley2/Documents/mercari/data')
+    #os.chdir('/Users/dhanley2/Documents/mercari/data')
+    os.chdir('/home/darragh/mercari/data')
     train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
     test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
     glove_file = '../feat/glove.6B.50d.txt'
@@ -146,6 +147,13 @@ def getFMFTRL():
     merge = pd.concat([train, dftt, test])
     merge['target'] = np.log1p(merge["price"])
     submission = test[['test_id']]
+    
+    '''
+    ix = (merge['brand_name']==merge['brand_name']) & \
+            (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
+    merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
+    '''
+    
     
     #EXTRACT DEVELOPTMENT TEST
     trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
@@ -171,6 +179,7 @@ def getFMFTRL():
     '''
     Encode Original Strings
     '''
+    '''
     for col in ['item_description', 'name']:    
         wb = CountVectorizer()
         if 'X_orig' not in locals():
@@ -184,10 +193,12 @@ def getFMFTRL():
     X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 100, 1, 0), dtype=bool)]    
     print ('Shape of original hash', X_orig.shape)
     X_orig = X_orig.tocoo()
+    '''
     
     '''
     Stemmer
     '''
+    
     # https://github.com/skbly7/usefulness/blob/ed11cd55080d553cf62873999a5e00b154057fbc/textpreprocess.py
     from nltk.tokenize import WordPunctTokenizer    # This is better for sentences containing unicode, like: u"N\u00faria Espert"
     word_tokenize = WordPunctTokenizer().tokenize
@@ -268,17 +279,7 @@ def getFMFTRL():
         return string.join(txts, sep=" ")
 
     print('[{}] Start stemming'.format(time.time() - start_time))
-    a = [textpreprocess(s) for s in merge["name"]]
-    print('[{}] Finish stemming'.format(time.time() - start_time))
-
-    txt = merge['name'].values[20]
-    
-    import multiprocessing as mp
-    pool = mp.Pool(processes=4)
-    merge['stem_name'] =  [textpreprocess(s) for s in merge["name"]]
-    #merge['stem_item_description'] =  [textpreprocess(s) for s in merge["item_description"]]
-    pool.close()
-    
+    merge['stem_name'] =  [textpreprocess(s) for s in merge["name"].values]
     print('[{}] Stemming completed'.format(time.time() - start_time))
     
     '''
@@ -348,23 +349,7 @@ def getFMFTRL():
     X_name = wb.fit_transform(merge['name'])
     del(wb)
     X_name = X_name[:, np.array(np.clip(X_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
-    print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
-    
-    '''
-    Hash stemmed name
-    '''
-    
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
-                                                                  "hash_size": 2 ** 29, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    X_stem_name = wb.fit_transform(merge['stem_name'])
-    del(wb)
-    X_stem_name = X_stem_name[:, np.array(np.clip(X_stem_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
-    print('[{}] Vectorize `stem_name` completed.'.format(time.time() - start_time))
-    
+    print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))    
     
     '''
     Hash category
@@ -411,9 +396,9 @@ def getFMFTRL():
     
     print('[{}] Get dummies on `item_condition_id` and `shipping` completed.'.format(time.time() - start_time))
     print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape)
+          X_name.shape, X_cat.shape, x_col.shape, X_stem_name.shape)
     sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col)).tocsr()
+                           x_col, X_stem_name)).tocsr()
     
     
     print('[{}] Create sparse merge completed'.format(time.time() - start_time))
@@ -431,7 +416,7 @@ def getFMFTRL():
         #train_X1, valid_X1, train_y1, valid_y1 = train_test_split(X, y, train_size=0.90, random_state=233)
         train_X, valid_X, train_y, valid_y = X[trnidx], X[validx], y.values[trnidx], y.values[validx]
         
-    model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
+    model = FM_FTRL(alpha=0.005, beta=0.005, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.005, L2_fm=0.0, init_fm=0.01,
                     D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
     
     baseline = 1.

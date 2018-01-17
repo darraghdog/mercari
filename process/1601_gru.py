@@ -172,179 +172,47 @@ def getFMFTRL():
     to_categorical(merge)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
     
-    '''
-    Crossed columns
-    '''
-    # my understanding on how to replicate what layers.crossed_column does. One
-    # can read here: https://www.tensorflow.org/tutorials/linear.
-    def cross_columns(x_cols):
-        """simple helper to build the crossed columns in a pandas dataframe
-        """
-        crossed_columns = dict()
-        colnames = ['_'.join(x_c) for x_c in x_cols]
-        for cname, x_c in zip(colnames, x_cols):
-            crossed_columns[cname] = x_c
-        return crossed_columns
-    
-    merge['item_condition_id_str'] = merge['item_condition_id'].astype(str)
-    merge['shipping_str'] = merge['shipping'].astype(str)
-    x_cols = (
-              ['brand_name',  'item_condition_id_str'],
-              ['brand_name',  'subcat_1'],
-              ['brand_name',  'subcat_2'],
-              ['brand_name',  'general_cat'],
-              #['brand_name',  'subcat_1',  'item_condition_id_str'],
-              #['brand_name',  'subcat_2',  'item_condition_id_str'],
-              #['brand_name',  'general_cat',  'item_condition_id_str'],
-              ['brand_name',  'shipping_str'],
-              ['shipping_str',  'item_condition_id_str'],
-              ['shipping_str',  'subcat_2'],
-              ['item_condition_id_str',  'subcat_2']          
-              )
-    crossed_columns_d = cross_columns(x_cols)
-    categorical_columns = list(
-        merge.select_dtypes(include=['object']).columns)
-    
-    D = 2**30
-    for k, v in crossed_columns_d.items():
-        print ('Crossed column ', k)
-        outls_ = []
-        indicator = 0 
-        for col in v:
-            outls_.append((np.array(merge[col].apply(hash)))%D + indicator)
-            indicator += 10**6
-        merge[k] = sum(outls_).tolist()
-    
-    '''
-    Count crossed cols
-    '''
-    cross_nm = [k for k in crossed_columns_d.keys()]
-    lb = LabelBinarizer(sparse_output=True)
-    x_col = lb.fit_transform(merge[cross_nm[0]])
-    for i in range(1, len(cross_nm)):
-        x_col = hstack((x_col, lb.fit_transform(merge[cross_nm[i]])))
-    del(lb)
-    
-    
-    '''
-    Hash name
-    '''
-    
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
-                                                                  "hash_size": 2 ** 29, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    X_name = wb.fit_transform(merge['name'])
-    del(wb)
-    X_name = X_name[:, np.array(np.clip(X_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
-    print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
-    
-    '''
-    Hash category
-    '''
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
-                                                                  "hash_size": 2 ** 20, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    cat = merge["category_name"].str.replace('/', ' ')
-    X_cat = wb.fit_transform(cat)
-    del(wb)
-    X_cat = X_cat[:, np.array(np.clip(X_cat.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
-    print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
-    
-    '''
-    Count category
-    '''
-    
-    wb = CountVectorizer()
-    X_category1 = wb.fit_transform(merge['general_cat'])
-    X_category2 = wb.fit_transform(merge['subcat_1'])
-    X_category3 = wb.fit_transform(merge['subcat_2'])
-    print('[{}] Count vectorize `categories` completed.'.format(time.time() - start_time))
-    
-    # wb= wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 3, "hash_ngrams_weights": [1.0, 1.0, 0.5],
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
-                                                                  "hash_size": 2 ** 29, "norm": "l2", "tf": 1.0,
-                                                                  "idf": None})
-                             , procs=8)
-    wb.dictionary_freeze= True
-    X_description = wb.fit_transform(merge['item_description'])
-    del(wb)
-    X_description = X_description[:, np.array(np.clip(X_description.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
-    print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
-    
-    lb = LabelBinarizer(sparse_output=True)
-    X_brand = lb.fit_transform(merge['brand_name'])
-    print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
-    
-    X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
-                                          sparse=True).values)
-    
-    print('[{}] Get dummies on `item_condition_id` and `shipping` completed.'.format(time.time() - start_time))
-    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape)
-    sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col)).tocsr()
-    
-    
-    print('[{}] Create sparse merge completed'.format(time.time() - start_time))
-    
-    # Remove features with document frequency <=1
-    print(sparse_merge.shape)
-    mask = np.array(np.clip(sparse_merge.getnnz(axis=0) - 1, 0, 1), dtype=bool)
-    sparse_merge = sparse_merge[:, mask]
-    print(sparse_merge.shape)
-    X = sparse_merge[:nrow_train]
-    X_test = sparse_merge[nrow_test:]
-    mask = np.array(np.clip(X.getnnz(axis=0) - 1, 0, 1), dtype=bool)
-    X = X[:, mask]
-    X_test = X_test[:, mask]
-    print(X.shape)
-    
-    gc.collect()
-    if develop:
-        #train_X1, valid_X1, train_y1, valid_y1 = train_test_split(X, y, train_size=0.90, random_state=233)
-        train_X, valid_X, train_y, valid_y = X[trnidx], X[validx], y.values[trnidx], y.values[validx]
-
-    model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
-                    D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
-    
-    baseline = 1.
-    for i in range(15):
-        model.fit(train_X , train_y , verbose=1)
-        predsfm = model.predict(X=valid_X)
-        score_ = rmsle(np.expm1(valid_y), np.expm1(predsfm))
-        print("FM_FTRL dev RMSLE:", score_)
-        if score_ < baseline:
-            baseline = score_
-        else:
-            break
-        
-    
-    print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
-    if develop:
-        predsfm = model.predict(X=valid_X)
-        print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
-        # 0.44532 
-        # Full data 0.424681
-    
-    
-    predsFM = model.predict(X_test)
-    print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
-    
-    return merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm
+    return merge, trnidx, validx, nrow_train, nrow_test, glove_file
 
 
+merge, trnidx, validx, nrow_train, nrow_test, glove_file = getFMFTRL()
 
-merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm = getFMFTRL()
+
 cpuStats()   
 gc.collect()
 cpuStats()
 
+'''
+fasttext mats
+'''
+fonm = open('ftext_name.txt','w')
+#fods = open('ftext_dscr.txt','w')
+for nm, ct, ds in zip(merge.name.tolist(), merge.category_name.str.replace('/', ' ').tolist(),
+                      merge.item_description.tolist()):
+    fonm.write('%s %s\n'%(ct.encode('ascii', 'ignore'),
+                                 nm.encode('ascii', 'ignore')))
+#    fods.write('%s %s %s\n'%(ct.encode('ascii', 'ignore'),
+#                                 nm.encode('ascii', 'ignore'),
+#                                 ds.encode('ascii', 'ignore')))
+fonm.close()
+#fods.close()
+
+from pyfasttext import FastText
+import fasttext
+from tqdm import tqdm 
+
+
+print('[{}] Start fasttext training'.format(time.time() - start_time))
+model = fasttext.cbow('ftext_name.txt', 'model', dim=32, ws = 5, lr = .1, min_count  = 1, thread = 4, epoch = 10, silent=0)
+modelcb = FastText('model.bin')
+print('[{}] Start fasttext mat creation'.format(time.time() - start_time))
+
+ftmat = np.zeros((merge.shape[0], 32))
+for c, vals in tqdm(enumerate(merge[['category_name', 'name']].values)):
+    ftmat[c] = modelcb.get_numpy_sentence_vector('%s %s'%(vals[0].replace('/', ' '), vals[1]))
+ftmat = pd.DataFrame(ftmat)
+print('[{}] Finished fasttext mat creation'.format(time.time() - start_time))
+ftmat.head()
 
 '''
 GRU
@@ -457,6 +325,7 @@ def list_flatten(var):
         list_ += sent_.split(' ')
     return Counter(list_)
 
+'''
 wordlist = []
 for col in ['name_token', 'category_token', 'brand_token']:
     flat_counter = list_flatten(merge[[col]].values[:,0])
@@ -484,6 +353,7 @@ f.close()
 print('Found %s word vectors.' % counter)
 
 embeddings_matrix = np.array(embeddings_matrix, dtype='float32')
+'''
 
 # Get the dot product
 def posn_to_sparse(dt, embedding_map):
@@ -558,6 +428,7 @@ merge.head()
 #EXTRACT DEVELOPTMENT TEST
 cpuStats() 
 
+'''
 # Make a sparse matrix of the ids of words
 merge_ids = posn_to_sparse(merge, embedding_map)
 # Get the dense layer input of the text
@@ -571,7 +442,7 @@ print(merge.shape)
 print(densemrg.shape)
 cpuStats() 
 gc.collect()
-
+'''
 #PROCESS TEXT: RAW
 print("Text to seq process...")
 print("   Fitting tokenizer...")
@@ -699,8 +570,8 @@ def get_model():
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
     
     
-    dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
-    dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
+    #dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
+    #dense_l = Dropout(dr)(Dense(32,activation='relu') (dense_name))
     
     #main layer
     main_l = concatenate([
@@ -710,7 +581,7 @@ def get_model():
         , rnn_layer2
         , rnn_layer3
         , rnn_layer4
-        , dense_l
+        , dense_name
         , num_vars
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
@@ -733,8 +604,9 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 cpuStats()
 merge.reset_index(drop=True, inplace=True)
 dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
-densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
-del merge, densemrg
+# densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
+densetrn, denseval, densetst = ftmat.values[:nrow_train][trnidx], ftmat.values[:nrow_train][validx], ftmat.values[nrow_test:]
+#del merge, densemrg
 gc.collect()
 cpuStats()
 
@@ -753,7 +625,7 @@ model.fit_generator(
                     , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                     , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                     , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                    , verbose=2
+                    , verbose=1
                     )
 
 
@@ -770,7 +642,7 @@ for c, lr in enumerate([0.010, 0.009, 0.008]):#, 0.006]): # 0.007,
                         , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                         , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                         , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , verbose=2
+                        , verbose=1
                         )
     y_pred_epochs.append(model.predict_generator(
                     tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
@@ -787,14 +659,4 @@ for c, lr in enumerate([0.010, 0.009, 0.008]):#, 0.006]): # 0.007,
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
-# Bagged Epoch 5 rmsle 0.429088545511
-print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))
 
-
-bag_preds = np.expm1(predsFM)*0.5 + np.expm1(yspred[:,0])*0.5  
-print('[{}] Finished predicting test set...'.format(time.time() - start_time))
-submission = test[["test_id"]].astype(int)
-submission["price"] = bag_preds
-submission.to_csv("./myBag_1201.csv", index=False)
-#submission.to_csv("./myBag"+log_subdir+"_{:.6}.csv".format(v_rmsle), index=False)
-print('[{}] Finished submission...'.format(time.time() - start_time))
