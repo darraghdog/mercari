@@ -185,6 +185,7 @@ cpuStats()
 '''
 GRU
 '''
+# https://github.com/ChenglongChen/Kaggle_HomeDepot/blob/master/Code/Chenglong/data_processor.py
 
 tech_mapper = {
                'unblocked' : 'unlocked',
@@ -213,6 +214,40 @@ tech_mapper = {
                'mwob:'    : 'mint without box',
                'mip'      : 'mint in packet',
                'mwop'     : 'mint without packet',
+               'bnew'     : 'brand new',
+               'tshirt'   : 't shirt',
+               '6+'       : '6plus',
+               '7+'       : '7plus',     
+               'fisherprice' : 'fisher price',
+               'northface' : 'north face',
+               'longsleeve' : 'long sleeve',
+               'boyshorts': 'boys shorts',
+               'boyshort': 'boys shorts',
+               '2pc'     : '2 piece',
+               '3pc'     : '3 piece',
+               '4pc'     : '4 piece',
+               '5pc'     : '5 piece',
+               '6pc'     : '6 piece',
+               '12pc'     : '12 piece',
+               '2pcs'     : '2 piece',
+               '3pcs'     : '3 piece',
+               '4pcs'     : '4 piece',
+               '5pcs'     : '5 piece',
+               '6pcs'     : '6 piece',
+               '12pcs'     : '12 piece',
+               '2pk'     : '2 pack',
+               '2pack'     : '2 pack',
+               '2pair'     : '2 pair',
+               '3pk'     : '3 pack',
+               '3pack'     : '3 pack',
+               '3pair'     : '3 pair',
+               'xbox360'     : 'xbox 360',
+               'amazonbasics' : 'amazon basics',
+               'brandnew': 'brand new',
+               'earpods' : 'ear pods',
+               'freeshipping' : 'free shipping',
+               'freeshp' :  'free shipping',
+               'fship' :  'free shipping'
                } 
 
 def replace_maps(sent):
@@ -296,7 +331,7 @@ def list_flatten(var):
         list_ += sent_.split(' ')
     return Counter(list_)
 
-'''
+
 wordlist = []
 for col in ['name_token', 'category_token', 'brand_token']:
     flat_counter = list_flatten(merge[[col]].values[:,0])
@@ -324,7 +359,7 @@ f.close()
 print('Found %s word vectors.' % counter)
 
 embeddings_matrix = np.array(embeddings_matrix, dtype='float32')
-'''
+
 
 # Get the dot product
 def posn_to_sparse(dt, embedding_map):
@@ -402,6 +437,9 @@ cpuStats()
 '''
 fasttext mats
 '''
+
+
+'''
 fonm = open('ftext_name.txt','w')
 for nm, ct, ds in zip(merge.name_token.str.lower(),
                       merge.category_name_split.str.lower(),
@@ -416,7 +454,6 @@ model = fasttext.cbow('ftext_name.txt', 'model', dim=24, ws = 4, lr = .05, min_c
 modelcb = FastText('model.bin')
 print('[{}] Start fasttext mat creation'.format(time.time() - start_time))
 
-
 ftmat = np.zeros((merge.shape[0], 24))
 for c, vals in tqdm(enumerate(merge[['category_name', 'name']].values)):
     ftmat[c] = modelcb.get_numpy_sentence_vector('%s %s'%(vals[0].replace('/', ' '), vals[1]))
@@ -424,7 +461,7 @@ ftmat = pd.DataFrame(ftmat)
 print('[{}] Finished fasttext mat creation'.format(time.time() - start_time))
 ftmat.head()
 
-'''
+
 def make_weights(dict_):
     embmat = np.zeros((len(dict_.keys())+1, 24))
     for k, v in dict_.items():
@@ -458,7 +495,7 @@ def make_glove_weights(dict_):
 embmatdsc = make_glove_weights(tok_raw_dsc)
 embmatntk = make_glove_weights(tok_raw_ntk)
 
-'''
+
 # Make a sparse matrix of the ids of words
 merge_ids = posn_to_sparse(merge, embedding_map)
 # Get the dense layer input of the text
@@ -472,7 +509,7 @@ print(merge.shape)
 print(densemrg.shape)
 cpuStats() 
 gc.collect()
-'''
+
 #PROCESS TEXT: RAW
 print("Text to seq process...")
 print("   Fitting tokenizer...")
@@ -595,10 +632,10 @@ def get_model():
     emb_brand               = Embedding(MAX_BRAND, 15)(brand)
     emb_item_condition      = Embedding(MAX_CONDITION, 5)(item_condition)
     
-    rnn_layer1 = GRU(64, recurrent_dropout=0.2) (emb_item_desc)
+    rnn_layer1 = GRU(96, recurrent_dropout=0.2) (emb_item_desc)
     rnn_layer2 = GRU(32, recurrent_dropout=0.0) (emb_category_name_split)
-    rnn_layer3 = GRU(64, recurrent_dropout=0.2) (emb_name)
-    rnn_layer4 = GRU(64, recurrent_dropout=0.2) (emb_ntk)
+    rnn_layer3 = GRU(96, recurrent_dropout=0.2) (emb_name)
+    rnn_layer4 = GRU(96, recurrent_dropout=0.2) (emb_ntk)
     
     #dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
     dense_l = Dropout(dr)(Dense(32,activation='relu') (dense_name))
@@ -614,7 +651,7 @@ def get_model():
         , dense_l
         , num_vars
     ])
-    main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
+    main_l = Dropout(dr)(Dense(512,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
     
     #output
@@ -634,9 +671,10 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 cpuStats()
 merge.reset_index(drop=True, inplace=True)
 dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
-# densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
-densetrn, denseval, densetst = ftmat.values[:nrow_train][trnidx], ftmat.values[:nrow_train][validx], ftmat.values[nrow_test:]
-#del merge, densemrg
+densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
+# densetrn, denseval, densetst = ftmat.values[:nrow_train][trnidx], ftmat.values[:nrow_train][validx], ftmat.values[nrow_test:]
+#del merge, 
+del densemrg
 gc.collect()
 cpuStats()
 
@@ -689,3 +727,4 @@ for c, lr in enumerate([0.010, 0.009, 0.008]):#, 0.006]): # 0.007,
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
+

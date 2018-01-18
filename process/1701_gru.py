@@ -346,7 +346,7 @@ def posn_to_sparse(dt, embedding_map):
 
                  
 @jit
-def myTokenizerFitJit(strls, max_words = 250000, filt = True):
+def myTokenizerFitJit(strls, max_words = 25000, filt = True):
     list_=[]
     for sent in strls:
         if filt:
@@ -356,8 +356,8 @@ def myTokenizerFitJit(strls, max_words = 250000, filt = True):
                 list_.append(s)
     return Counter(list_).most_common(max_words)
 
-def myTokenizerFit(strls, max_words = 250000):
-    mc = myTokenizerFitJit(strls, max_words = 250000)
+def myTokenizerFit(strls, max_words = 25000):
+    mc = myTokenizerFitJit(strls, max_words = 25000)
     return dict((i, c+1) for (c, (i, ii)) in enumerate(mc))  
 
 @jit
@@ -380,9 +380,9 @@ tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
 gc.collect()
-tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 250000)
+tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 100000)
 gc.collect()
-tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 250000)
+tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 100000)
 gc.collect()
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
@@ -412,9 +412,7 @@ for nm, ct, ds in zip(merge.name_token.str.lower(),
 fonm.close()
 
 print('[{}] Start fasttext training'.format(time.time() - start_time))
-'''
 model = fasttext.cbow('ftext_name.txt', 'model', dim=24, ws = 4, lr = .05, min_count  = 1, thread = 8, epoch = 4, silent=0)
-'''
 modelcb = FastText('model.bin')
 print('[{}] Start fasttext mat creation'.format(time.time() - start_time))
 
