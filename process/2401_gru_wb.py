@@ -11,7 +11,7 @@ from collections import Counter
 from scipy.sparse import csr_matrix, hstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
-from nltk.stem import PorterStemmer,  LancasterStemmer
+from nltk.stem import PorterStemmer
 import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
@@ -124,6 +124,120 @@ print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
 cpuStats()
 
+bigram_mapper = {
+    "david yurman" : "david yurman davidyurman",
+    "lily jade" : "lily jade lilyjade",
+    "pop stack" : "pop stack popstack",
+    "alexis brittar" : "alexis brittar alexisbrittar",
+    "playstation vr" : "playstation vr playstationvr",
+    "dunn cookie" : "dunn cookie dunncookie",
+    "kendra scott" : "kendra scott kendrascott",
+    "stuart weitzman" : "stuart weitzman stuartweitzman",
+    "google home" : "google home googlehome",
+    "mk purses" : "mk purses mkpurses",
+    "lash boost" : "lash boost lashboost",
+    "gift cards" : "gift cards giftcards",
+    "dunn cookies" : "dunn cookies dunncookies",
+    "saint laurent" : "saint laurent saintlaurent",
+    "date code" : "date code datecode",
+    "14 gold" : "14 gold 14gold",
+    "not pictured" : "not pictured notpictured",
+    "christian louboutin" : "christian louboutin christianlouboutin",
+    "real gold" : "real gold realgold",
+    "moana bikini" : "moana bikini moanabikini",
+    "shine marks" : "shine marks shinemarks",
+    "tag heuer" : "tag heuer tagheuer",
+    "james avery" : "james avery jamesavery",
+    "in pop" : "in pop inpop",
+    "hair is" : "hair is hairis",
+    "space gray" : "space gray spacegray",
+    "tom ford" : "tom ford tomford",
+    "pro hero" : "pro hero prohero",
+    "yellow gold" : "yellow gold yellowgold",
+    "halloween bowls" : "halloween bowls halloweenbowls",
+    "gold diamond" : "gold diamond golddiamond",
+    "authenticity card" : "authenticity card authenticitycard",
+    "gold band" : "gold band goldband",
+    "phone is" : "phone is phoneis",
+    "private sale" : "private sale privatesale",
+    "miu miu" : "miu miu miumiu",
+    "pandora custom" : "pandora custom pandoracustom",
+    "webkinz signature" : "webkinz signature webkinzsignature",
+    "alexander mcqueen" : "alexander mcqueen alexandermcqueen",
+    "100 ml" : "100 ml 100ml",
+    "vuitton eva" : "vuitton eva vuittoneva",
+    "bean boots" : "bean boots beanboots",
+    "canada goose" : "canada goose canadagoose",
+    "polo bear" : "polo bear polobear",
+    "johnny was" : "johnny was johnnywas",
+    "agent provocateur" : "agent provocateur agentprovocateur",
+    "alexander wang" : "alexander wang alexanderwang",
+    "apple watch" : "apple watch applewatch",
+    "sold out" : "sold out soldout",
+    "with games" : "with games withgames",
+    "controller and" : "controller and controllerand",
+    "beach bunny" : "beach bunny beachbunny",
+    "watch sport" : "watch sport watchsport",
+    "lash boost" : "lash boost lashboost",
+    "coach disney" : "coach disney coachdisney",
+    "baseball irma" : "baseball irma baseballirma",
+    "also includes" : "also includes alsoincludes",
+    "wedding dress" : "wedding dress weddingdress",
+    "frankie's bikinis" : "frankie's bikinis frankie'sbikinis",
+    "authentic chanel" : "authentic chanel authenticchanel",
+    "some have" : "some have somehave",
+    "hover board" : "hover board hoverboard",
+    "complete series" : "complete series completeseries",
+    "18 55mm" : "18 55mm 1855mm",
+    "ring sling" : "ring sling ringsling",
+    "stone cold" : "stone cold stonecold",
+    "ring earrings" : "ring earrings ringearrings",
+    "dead stock" : "dead stock deadstock",
+    "moto 360" : "moto 360 moto360",
+    "mcm tote" : "mcm tote mcmtote",
+    "nintendo classic" : "nintendo classic nintendoclassic",
+    "glitter gloss" : "glitter gloss glittergloss",
+    "fire emblem" : "fire emblem fireemblem",
+    "dunn tools" : "dunn tools dunntools",
+    "ultra boost" : "ultra boost ultraboost",
+    "protector on" : "protector on protectoron",
+    "tc lot" : "tc lot tclot",
+    "wedding gown" : "wedding gown weddinggown",
+    "maui jim" : "maui jim mauijim",
+    "case charger" : "case charger casecharger",
+    "juice plus" : "juice plus juiceplus",
+    "true grit" : "true grit truegrit",
+    "5mm bracelet" : "5mm bracelet 5mmbracelet",
+    "amiibo card" : "amiibo card amiibocard",
+    "controller grips" : "controller grips controllergrips",
+    "vuitton box" : "vuitton box vuittonbox",
+    "inch case" : "inch case inchcase",
+    "pieces rm" : "pieces rm piecesrm",
+    "ultra rare" : "ultra rare ultrarare",
+    "box only" : "box only boxonly",
+    "watch screen" : "watch screen watchscreen",
+    "rm items" : "rm items rmitems",
+    "personal listing" : "personal listing personallisting",
+    "bear for" : "bear for bearfor",
+    "shoe box" : "shoe box shoebox",
+    "dre tour" : "dre tour dretour",
+    "new macbook" : "new macbook newmacbook",
+    "dust bag" : "dust bag dustbag",
+    "vuitton lock" : "vuitton lock vuittonlock",
+    "ban case" : "ban case bancase",
+    "with stamp" : "with stamp withstamp",
+    "controller skin" : "controller skin controllerskin",
+    "for fitbit" : "for fitbit forfitbit",
+    "watch box" : "watch box watchbox",
+    "blaze band" : "blaze band blazeband",
+    "vault boy" : "vault boy vaultboy",
+    "lululemon bags" : "lululemon bags lululemonbags"
+        } 
+
+
+
+
+
 def getFMFTRL():
     #os.chdir('/Users/dhanley2/Documents/mercari/data')
     os.chdir('/home/darragh/mercari/data')
@@ -131,7 +245,7 @@ def getFMFTRL():
     test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
     
     glove_file = '../feat/glove.6B.50d.txt'
-    threads = 4
+    threads = 8
     save_dir = '../feat'
     
     
@@ -152,6 +266,8 @@ def getFMFTRL():
     ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
     merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
     
+    
+
     #EXTRACT DEVELOPTMENT TEST
     trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
     
@@ -172,6 +288,11 @@ def getFMFTRL():
     
     to_categorical(merge)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
+       
+    for c, (k, v) in enumerate(bigram_mapper.items()):
+        print c, k, v
+        merge['name'] = merge.name.str.replace(k, v)
+        merge['item_description'] = merge.item_description.str.replace(k, v)
     
     '''
     Crossed columns
@@ -573,7 +694,7 @@ tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_w
 gc.collect()
 tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 25000)
 gc.collect()
-tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 25000)
+tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 50000)
 gc.collect()
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
@@ -585,29 +706,10 @@ gc.collect()
 merge["seq_name"] =                    fit_sequence(merge.name.str.lower(), tok_raw_nam)
 gc.collect()
 merge["seq_name_token"] =              fit_sequence(merge.name_token.str.lower(), tok_raw_ntk, filt = False)
-
 gc.collect()
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 merge.head()
 #EXTRACT DEVELOPTMENT TEST
-
-# Do the stemming and map the orig id to stemmed id
-ps = PorterStemmer()
-stem_dsc = dict([(w, ps.stem(w)) for w in tok_raw_dsc.keys()])
-stem_ntk = dict([(w, ps.stem(w)) for w in tok_raw_ntk.keys()])
-stem_dsc_vals = dict([(w, c+1) for c, w in enumerate(list(set(stem_dsc.values())))])
-stem_ntk_vals = dict([(w, c+1) for c, w in enumerate(list(set(stem_ntk.values())))])
-stem_map_ntk  = dict([(id_, stem_ntk_vals[stem_ntk[w]]) for (w, id_)  in tok_raw_ntk.items()])
-stem_map_dsc  = dict([(id_, stem_dsc_vals[stem_dsc[w]]) for (w, id_)  in tok_raw_dsc.items()])
-print(len(set(stem_ntk.values())))
-print(len(set(stem_dsc.values())))
-
-merge["seq_item_description_stem"] = [[stem_map_dsc[i] for i in l] for l in merge["seq_item_description"].copy()]
-merge["seq_name_token_stem"] = [[stem_map_ntk[i] for i in l] for l in merge["seq_name_token"].copy()]
-print('[{}] Finished Stemming lists...'.format(time.time() - start_time))
-
-
-sorted(set(stem_dsc.keys()))[5000:]
 
 # Make a sparse matrix of the ids of words
 merge_ids = posn_to_sparse(merge, embedding_map)
@@ -630,8 +732,6 @@ MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
-MAX_NTK_STEM = max(stem_map_ntk.values())+1
-MAX_DSC_STEM = max(stem_map_dsc.values())+1
 MAX_CATEGORY = np.max(merge.category.max())+1
 MAX_BRAND = np.max(merge.brand.max())+1
 merge.item_condition_id = merge.item_condition_id.astype(int)
@@ -643,14 +743,10 @@ def get_keras_data(dataset):
                               maxlen=max([len(l) for l in dataset.seq_name]))
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
-        ,'ntk_stem': pad_sequences(dataset.seq_name_token_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_name_token_stem]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
                               maxlen=max([len(l) for l in dataset.seq_item_description]))
         ,'item_desc_rev': pad_sequences(dataset.seq_item_description_rev, 
                               maxlen=max([len(l) for l in dataset.seq_item_description_rev]))
-        ,'item_desc_stem': pad_sequences(dataset.seq_item_description_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_item_description_stem]))
         ,'brand': np.array(dataset.brand)
         ,'category': np.array(dataset.category)
         ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
@@ -727,18 +823,16 @@ def rmsle(y, y_pred):
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
 dr = 0.1
-dtrain.head()
 
+from keras.layers import GlobalMaxPooling1D
 from keras.layers import GlobalMaxPooling1D
 def get_model():
 
     ##Inputs
     name = Input(shape=[None], name="name")
     ntk = Input(shape=[None], name="ntk")
-    ntk_stem = Input(shape=[None], name="ntk_stem")
     item_desc = Input(shape=[None], name="item_desc")
     item_desc_rev = Input(shape=[None], name="item_desc_rev")
-    item_desc_stem = Input(shape=[None], name="item_desc_stem")
     category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
     item_condition = Input(shape=[1], name="item_condition")
@@ -748,13 +842,11 @@ def get_model():
     #Embeddings layers
     emb_size = 60
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
-    emb_ntk                 = Embedding(MAX_NTK, emb_size//2) (ntk) 
-    emb_ntk_stem            = Embedding(MAX_NTK_STEM, emb_size//2) (ntk_stem) 
+    emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
     
     emb_item_desc_vals      =  Embedding(MAX_DSC, emb_size//2)
     emb_item_desc           = emb_item_desc_vals (item_desc) 
     emb_item_desc_rev       = emb_item_desc_vals (item_desc_rev) 
-    #emb_item_desc_stem      = Embedding(MAX_DSC_STEM, emb_size//2) (item_desc_stem) 
     
     emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
     emb_brand               = Embedding(MAX_BRAND, 8)(brand)
@@ -765,9 +857,7 @@ def get_model():
     rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
     rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
-    rnn_layer5 = GRU(8, recurrent_dropout=0.0) (emb_ntk_stem)
-    #rnn_layer6 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_stem)
-    rnn_layer7 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_rev)
+    rnn_layer6 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_rev)
     
     dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
     dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
@@ -780,9 +870,7 @@ def get_model():
         , rnn_layer2
         , rnn_layer3
         , rnn_layer4
-        , rnn_layer5
-        #, rnn_layer6
-        , rnn_layer7
+        , rnn_layer6
         , dense_l
         , num_vars
     ])
@@ -793,7 +881,7 @@ def get_model():
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name, ntk_stem, item_desc_stem, item_desc_rev
+    model = Model([name, brand, ntk, item_desc, dense_name, item_desc_rev
                    , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
@@ -806,9 +894,8 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 merge.reset_index(drop=True, inplace=True)
 dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
 densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
-#del merge, densemrg
+del merge, densemrg
 gc.collect()
-merge.head()
 
 epochs = 2
 batchSize = 512 * 4
@@ -827,6 +914,7 @@ model.fit_generator(
                     , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
                     , verbose=1
                     )
+
 
 val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
@@ -857,11 +945,8 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
-# RMSLE error on dev test: 0.422394064714
-
+# Bagged Epoch 5 rmsle 0.429088545511
 print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))
-
-
 
 
 bag_preds = np.expm1(predsFM)*0.5 + np.expm1(yspred[:,0])*0.5  

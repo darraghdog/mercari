@@ -11,7 +11,7 @@ from collections import Counter
 from scipy.sparse import csr_matrix, hstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
-from nltk.stem import PorterStemmer,  LancasterStemmer
+from nltk.stem import PorterStemmer
 import pandas as pd
 import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
@@ -131,7 +131,7 @@ def getFMFTRL():
     test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
     
     glove_file = '../feat/glove.6B.50d.txt'
-    threads = 4
+    threads = 8
     save_dir = '../feat'
     
     
@@ -151,7 +151,7 @@ def getFMFTRL():
     submission = test[['test_id']]
     ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
     merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
-    
+
     #EXTRACT DEVELOPTMENT TEST
     trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
     
@@ -172,6 +172,55 @@ def getFMFTRL():
     
     to_categorical(merge)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
+       
+    ''' 
+    Regex characteristics - carat, gb/tb, cpu
+    '''
+    def count_rgx(regexls, idx_, filter_ = None):
+        colvals = merge['name'][idx_] + ' ' +merge['item_description'][idx_]
+        vals = pd.Series(np.zeros(len(colvals)))
+        for rgx_ in regexls:
+            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
+            vals[vals==0] += pd.Series([int(v[0]) if len(v)!= 0 else 0 for v in valsls])[vals==0]
+        if filter_:
+            vals[~vals.isin(filter_)] = 0.
+        return vals
+    
+    def count_rgx_name(regexls, idx_, filter_ = None):
+        colvals = merge['name'][idx_]
+        vals = pd.Series(np.zeros(len(colvals)))
+        for rgx_ in regexls:
+            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
+            vals[vals==0] += pd.Series([int(v[0]) if len(v)!= 0 else 0 for v in valsls])[vals==0]
+        if filter_:
+            vals[~vals.isin(filter_)] = 0.
+        return vals
+    
+    # gold
+    merge['measure_gold'] = 0.
+    ix_chk = (merge.name.str.contains('gold', case=False)) | \
+                (merge.item_description.str.contains('gold', case=False))
+    rgxls = [r"(\d+)k ", r"(\d+)kt ", r"(\d+)k.", r"(\d+)kt.", r"(\d+)k,", r"(\d+)kt,",
+             r"(\d+) k ", r"(\d+) kt", r"(\d+) k.", r"(\d+) kt.", r"(\d+) k,", r"(\d+) kt,"]
+
+    merge['measure_gold'][ix_chk] = count_rgx(rgxls, ix_chk, filter_ = [10,12,14,16,18,20,21,22,23,24])
+    
+    # memory
+    merge['measure_memory'] = 0.
+    ix_chk = (merge.general_cat.str.contains('Electronics', case=False)) 
+    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
+    gbsize = count_rgx_name(rgxls, ix_chk)#, filter_=[2**e for e in range(13)])
+    rgxls = [r"(\d+)tb ", r"(\d+) tb", r"(\d+)tb.", r"(\d+) tb.", r"(\d+)tb,", r"(\d+) tb,"]
+    tbsize = count_rgx_name(rgxls, ix_chk, filter_=list(range(1,5)))*1024
+    gbsize[gbsize==0] = tbsize[gbsize==0]
+    merge['measure_memory'][ix_chk] = gbsize
+    
+    # cpu
+    
+    # oz
+    
+    # diamond 
+    #r"(\d+) karat ", r"(\d+) carat "
     
     '''
     Crossed columns
@@ -302,7 +351,13 @@ def getFMFTRL():
     print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
     
     lb = LabelBinarizer(sparse_output=True)
-    X_brand = lb.fit_transform(merge['brand_name'])
+    X_brand  = lb.fit_transform(merge['brand_name'])
+    X_memory = lb.fit_transform(merge['measure_memory'])
+    mask = np.array(np.clip(X_memory.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
+    X_memory = X_memory[:, mask]
+    X_gold   = lb.fit_transform(merge['measure_gold'])
+    mask = np.array(np.clip(X_gold.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
+    X_gold = X_gold[:, mask]
     print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
     
     X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
@@ -317,12 +372,14 @@ def getFMFTRL():
     '''
 
     print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape)
+          X_name.shape, X_cat.shape, x_col.shape, X_memory, X_gold)
     sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col)).tocsr()
+                           x_col, X_memory, X_gold)).tocsr()
 
     
     print('[{}] Create sparse merge completed'.format(time.time() - start_time))
+    
+    
     
     # Remove features with document frequency <=1
     print(sparse_merge.shape)
@@ -351,13 +408,13 @@ def getFMFTRL():
         else:
             break
         
-    
     print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
     if develop:
         predsfm = model.predict(X=valid_X)
         print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
         # 0.44532 
         # Full data 0.424681
+        # 0.419741
     
     
     predsFM = model.predict(X_test)
@@ -567,13 +624,19 @@ def fit_sequence(str_, tkn_, filt = True):
         labels.append(tk)
     return labels
 
+merge['gold'] = merge['measure_gold']/np.max(merge['measure_gold'])
+merge['name'][merge['gold']!=0] = merge['name'][merge['gold']!=0] + \
+                    ' '+merge['measure_gold'][merge['gold']!=0].astype(int).astype(str)+'k'
+merge['name'][merge['measure_memory']!=0] = merge['name'][merge['measure_memory']!=0] + \
+                    ' '+merge['measure_memory'][merge['measure_memory']!=0].astype(int).astype(str)+'gb'
+
 tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().unique(), max_words = 800)
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
 gc.collect()
 tok_raw_dsc = myTokenizerFit(merge.description_token[:nrow_train].str.lower().unique(), max_words = 25000)
 gc.collect()
-tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 25000)
+tok_raw_ntk = myTokenizerFit(merge.name_token[:nrow_train].str.lower().unique(), max_words = 50000)
 gc.collect()
 print('[{}] Finished FITTING TEXT DATA...'.format(time.time() - start_time))    
 print("   Transforming text to seq...")
@@ -585,29 +648,10 @@ gc.collect()
 merge["seq_name"] =                    fit_sequence(merge.name.str.lower(), tok_raw_nam)
 gc.collect()
 merge["seq_name_token"] =              fit_sequence(merge.name_token.str.lower(), tok_raw_ntk, filt = False)
-
 gc.collect()
 print('[{}] Finished PROCESSING TEXT DATA...'.format(time.time() - start_time))
 merge.head()
 #EXTRACT DEVELOPTMENT TEST
-
-# Do the stemming and map the orig id to stemmed id
-ps = PorterStemmer()
-stem_dsc = dict([(w, ps.stem(w)) for w in tok_raw_dsc.keys()])
-stem_ntk = dict([(w, ps.stem(w)) for w in tok_raw_ntk.keys()])
-stem_dsc_vals = dict([(w, c+1) for c, w in enumerate(list(set(stem_dsc.values())))])
-stem_ntk_vals = dict([(w, c+1) for c, w in enumerate(list(set(stem_ntk.values())))])
-stem_map_ntk  = dict([(id_, stem_ntk_vals[stem_ntk[w]]) for (w, id_)  in tok_raw_ntk.items()])
-stem_map_dsc  = dict([(id_, stem_dsc_vals[stem_dsc[w]]) for (w, id_)  in tok_raw_dsc.items()])
-print(len(set(stem_ntk.values())))
-print(len(set(stem_dsc.values())))
-
-merge["seq_item_description_stem"] = [[stem_map_dsc[i] for i in l] for l in merge["seq_item_description"].copy()]
-merge["seq_name_token_stem"] = [[stem_map_ntk[i] for i in l] for l in merge["seq_name_token"].copy()]
-print('[{}] Finished Stemming lists...'.format(time.time() - start_time))
-
-
-sorted(set(stem_dsc.keys()))[5000:]
 
 # Make a sparse matrix of the ids of words
 merge_ids = posn_to_sparse(merge, embedding_map)
@@ -630,33 +674,30 @@ MAX_CAT = max(tok_raw_cat.values())+1
 MAX_NAM = max(tok_raw_nam.values())+1
 MAX_NTK = max(tok_raw_ntk.values())+1
 MAX_DSC = max(tok_raw_dsc.values())+1
-MAX_NTK_STEM = max(stem_map_ntk.values())+1
-MAX_DSC_STEM = max(stem_map_dsc.values())+1
 MAX_CATEGORY = np.max(merge.category.max())+1
 MAX_BRAND = np.max(merge.brand.max())+1
 merge.item_condition_id = merge.item_condition_id.astype(int)
 MAX_CONDITION = np.max(merge.item_condition_id.astype(int).max())+1
-    
+
+
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
                               maxlen=max([len(l) for l in dataset.seq_name]))
         ,'ntk': pad_sequences(dataset.seq_name_token, 
                               maxlen=max([len(l) for l in dataset.seq_name_token]))
-        ,'ntk_stem': pad_sequences(dataset.seq_name_token_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_name_token_stem]))
         ,'item_desc': pad_sequences(dataset.seq_item_description, 
                               maxlen=max([len(l) for l in dataset.seq_item_description]))
         ,'item_desc_rev': pad_sequences(dataset.seq_item_description_rev, 
                               maxlen=max([len(l) for l in dataset.seq_item_description_rev]))
-        ,'item_desc_stem': pad_sequences(dataset.seq_item_description_stem, 
-                              maxlen=max([len(l) for l in dataset.seq_item_description_stem]))
         ,'brand': np.array(dataset.brand)
         ,'category': np.array(dataset.category)
         ,'category_name_split': pad_sequences(dataset.seq_category_name_split, 
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
+        ,'gold': np.array(dataset[["gold"]])
+        #,'memory': np.array(dataset[["memory"]])
     }
     return X   
 
@@ -727,7 +768,6 @@ def rmsle(y, y_pred):
     return (sum(to_sum) * (1.0/len(y))) ** 0.5
 
 dr = 0.1
-dtrain.head()
 
 from keras.layers import GlobalMaxPooling1D
 def get_model():
@@ -735,26 +775,24 @@ def get_model():
     ##Inputs
     name = Input(shape=[None], name="name")
     ntk = Input(shape=[None], name="ntk")
-    ntk_stem = Input(shape=[None], name="ntk_stem")
     item_desc = Input(shape=[None], name="item_desc")
     item_desc_rev = Input(shape=[None], name="item_desc_rev")
-    item_desc_stem = Input(shape=[None], name="item_desc_stem")
     category_name_split = Input(shape=[None], name="category_name_split")
     brand = Input(shape=[1], name="brand")
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[1], name="num_vars")
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
+    gold = Input(shape=[1], name="gold")
+    #memory = Input(shape=[1], name="memory")
     
     #Embeddings layers
     emb_size = 60
     emb_name                = Embedding(MAX_NAM, emb_size//2)(name) 
-    emb_ntk                 = Embedding(MAX_NTK, emb_size//2) (ntk) 
-    emb_ntk_stem            = Embedding(MAX_NTK_STEM, emb_size//2) (ntk_stem) 
+    emb_ntk                 = Embedding(MAX_NTK, emb_size//2)(ntk) 
     
     emb_item_desc_vals      =  Embedding(MAX_DSC, emb_size//2)
     emb_item_desc           = emb_item_desc_vals (item_desc) 
     emb_item_desc_rev       = emb_item_desc_vals (item_desc_rev) 
-    #emb_item_desc_stem      = Embedding(MAX_DSC_STEM, emb_size//2) (item_desc_stem) 
     
     emb_category_name_split = Embedding(MAX_CAT, emb_size//3)(category_name_split) 
     emb_brand               = Embedding(MAX_BRAND, 8)(brand)
@@ -765,9 +803,7 @@ def get_model():
     rnn_layer2 = GRU(8, recurrent_dropout=0.0) (emb_category_name_split)
     rnn_layer3 = GRU(8, recurrent_dropout=0.0) (emb_name)
     rnn_layer4 = GRU(8, recurrent_dropout=0.0) (emb_ntk)
-    rnn_layer5 = GRU(8, recurrent_dropout=0.0) (emb_ntk_stem)
-    #rnn_layer6 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_stem)
-    rnn_layer7 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_rev)
+    rnn_layer6 = GRU(16, recurrent_dropout=0.0) (emb_item_desc_rev)
     
     dense_l = Dropout(dr*3)(Dense(256,activation='relu') (dense_name))
     dense_l = Dropout(dr*3)(Dense(32,activation='relu') (dense_name))
@@ -780,11 +816,10 @@ def get_model():
         , rnn_layer2
         , rnn_layer3
         , rnn_layer4
-        , rnn_layer5
-        #, rnn_layer6
-        , rnn_layer7
+        , rnn_layer6
         , dense_l
         , num_vars
+        , gold#, memory
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
@@ -793,8 +828,8 @@ def get_model():
     output = Dense(1,activation="linear") (main_l)
     
     #model
-    model = Model([name, brand, ntk, item_desc, dense_name, ntk_stem, item_desc_stem, item_desc_rev
-                   , category_name_split #,category
+    model = Model([name, brand, ntk, item_desc, dense_name, item_desc_rev
+                   , category_name_split, gold
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
@@ -808,7 +843,6 @@ dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[
 densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
 #del merge, densemrg
 gc.collect()
-merge.head()
 
 epochs = 2
 batchSize = 512 * 4
@@ -828,11 +862,12 @@ model.fit_generator(
                     , verbose=1
                     )
 
+
 val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvalid["seq_name_token"].tolist()))
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
+for c, lr in enumerate([0.010, 0.008, 0.006]): # , 0.006, 0.007,
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
                         trn_generator(densetrn, dtrain, dtrain.target, batchSize)
@@ -857,11 +892,8 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
 y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
 yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
-# RMSLE error on dev test: 0.422394064714
-
+# Bagged Epoch 5 rmsle 0.429088545511
 print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))
-
-
 
 
 bag_preds = np.expm1(predsFM)*0.5 + np.expm1(yspred[:,0])*0.5  

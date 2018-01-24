@@ -1,0 +1,1001 @@
+,target,feature,weight
+0,y,item_description__limbs,1.87655154156
+1,y,item_description__14k,1.84201285918
+2,y,brand_name__david yurman,1.65979319165
+3,y,item_description__carat,1.645582724
+4,y,name__dockatot,1.61508833548
+5,y,item_description__unlocked,1.59481910133
+6,y,item_description__64gb,1.54282655101
+7,y,name__tieks,1.52596754524
+8,y,brand_name__vitamix,1.46516268825
+9,y,name__tria,1.45379558707
+10,y,item_description__16gb,1.45027033143
+11,y,name__hatchimals,1.43429004668
+12,y,name__hatchimal,1.42468725472
+13,y,item_description__500gb,1.41947025823
+14,y,name__dyson,1.38939053153
+15,y,name__movado,1.36739960196
+16,y,item_description__32gb,1.36349924652
+17,y,name__007taz,1.34593421725
+18,y,item_description__imei,1.33532676741
+19,y,name__hoverboard,1.32224962827
+20,y,name__tyme,1.32218564269
+21,y,name__lily jade,1.28338326421
+22,y,item_description__pop stack,1.28221479838
+23,y,item_description__10k,1.24668288022
+24,y,item_description__i5,1.23454797391
+25,y,name__owlet,1.2279562126
+26,y,name__delightful,1.22143269552
+27,y,brand_name__celine,1.2034680975
+28,y,name__mcm,1.19371557949
+29,y,name__playstation vr,1.19141075619
+30,y,name__dunn cookie,1.1734337926
+31,y,brand_name__kendra scott,1.1471210084
+32,y,brand_name__michele,1.13657391538
+33,y,category_name__kids/strollers/lightweight,1.12907036714
+34,y,brand_name__alexis brittar,1.1274617181
+35,y,name__mk purses,1.12598874037
+36,y,name__airpods,1.12588893804
+37,y,brand_name__stuart weitzman,1.11793634172
+38,y,name__moncler,1.11507533669
+39,y,item_description__stack,1.09918495552
+40,y,item_description__cans,1.09517654117
+41,y,brand_name__blendtec,1.09498304211
+42,y,brand_name__saint laurent,1.09111814959
+43,y,name__gift cards,1.08683621462
+44,y,item_description__receipt,1.08400345722
+45,y,name__brahmin,1.07821679948
+46,y,name__dunn cookies,1.07745442075
+47,y,name__256gb,1.07735400725
+48,y,name__google home,1.07177447178
+49,y,item_description__date code,1.06926156235
+50,y,item_description__weighs,1.06919061068
+51,y,name__reformation,1.06471144712
+52,y,item_description__tmobile,1.06253241838
+53,y,name__cutco,1.0613011044
+54,y,name__lash boost,1.05851060485
+55,y,name__rolex,1.05647532696
+56,y,item_description__i7,1.05646420216
+57,y,item_description__grams,1.05533169503
+58,y,item_description__14kt,1.05329659701
+59,y,name__skinmedica,1.05232916052
+60,y,name__ue,1.05119265497
+61,y,name__freebird,1.0461341714
+62,y,item_description__diamonds,1.0451634744
+63,y,name__bose,1.04287109477
+64,y,name__ultraboost,1.04082160681
+65,y,name__sorrelli,1.03732692555
+66,y,item_description__not pictured,1.03666306073
+67,y,brand_name__balenciaga,1.02746255019
+68,y,item_description__750,1.0253171167
+69,y,name__harveys,1.02318483168
+70,y,name__elgato,1.02311589064
+71,y,name__14 gold,1.01751874361
+72,y,category_name__kids/strollers/travel systems,1.01087439955
+73,y,item_description__regimen,1.01034758256
+74,y,name__dji,1.00753761152
+75,y,item_description__sprint,1.00122207688
+76,y,name__nuface,0.998488907797
+77,y,item_description__graded,0.997844097695
+78,y,brand_name__christian louboutin,0.986933362687
+79,y,item_description__real gold,0.985737059117
+80,y,name__moana bikini,0.975938465916
+81,y,name__ftp,0.97476220599
+82,y,brand_name__tiffany & co.,0.972473318534
+83,y,item_description__in pop,0.965472847512
+84,y,name__scuf,0.961038582437
+85,y,name__r9,0.959740703575
+86,y,item_description__gold band,0.959183511404
+87,y,name__bellami,0.955199769123
+88,y,item_description__hdmi,0.952364976233
+89,y,item_description__vaulted,0.949060639917
+90,y,item_description__warranty,0.945010433981
+91,y,name__yeezys,0.943942107885
+92,y,name__nmds,0.943765503268
+93,y,item_description__deadstock,0.942832976582
+94,y,name__bellefit,0.941133063296
+95,y,item_description__128gb,0.938035911409
+96,y,name__zur,0.936998823498
+97,y,item_description__space gray,0.936909287769
+98,y,"category_name__electronics/car audio, video & gps/car subwoofers",0.931338998035
+99,y,name__64g,0.931074573812
+100,y,name__james avery,0.928233759282
+101,y,brand_name__hermès,0.926026847506
+102,y,item_description__liter,0.92591085875
+103,y,item_description__jeweler,0.924231309995
+104,y,name__lladro,0.920604672127
+105,y,brand_name__stone fox swim,0.91960956601
+106,y,name__candylipz,0.919119240822
+107,y,name__tag heuer,0.919058751067
+108,y,name__nerium,0.915222133168
+109,y,name__gtx,0.913039111883
+110,y,name__nikon,0.911321292395
+111,y,name__jaybird,0.909136539324
+112,y,category_name__kids/strollers/standard,0.906587321246
+113,y,name__corral,0.906268702886
+114,y,name__pro hero,0.906108387879
+115,y,item_description__verizon,0.905613254479
+116,y,item_description__hair is,0.899680837822
+117,y,name__ghd,0.899660470117
+118,y,name__nmd,0.897133706267
+119,y,item_description__shine marks,0.896635085255
+120,y,name__kikki,0.893891251834
+121,y,brand_name__babolat,0.891650555248
+122,y,name__tula,0.888269111561
+123,y,item_description__yellow gold,0.888253383415
+124,y,name__birkin,0.883792798004
+125,y,name__foamposites,0.881281844493
+126,y,brand_name__agent provocateur,0.877764499194
+127,y,name__halloween bowls,0.876993399339
+128,y,name__tom ford,0.876885021483
+129,y,name__pax,0.875057551566
+130,y,name__2tb,0.872806864778
+131,y,name__foamposite,0.8717363254
+132,y,item_description__18k,0.866745925923
+133,y,name__9300hailey,0.86502013492
+134,y,item_description__gold diamond,0.863499857938
+135,y,brand_name__off-white,0.856627128182
+136,y,brand_name__spell & the gypsy collective,0.852918852176
+137,y,name__pandora custom,0.852029464814
+138,y,item_description__phone is,0.851070745982
+139,y,name__louboutins,0.850933895124
+140,y,brand_name__miu miu,0.848738672172
+141,y,brand_name__shure,0.848178017252
+142,y,name__vlone,0.844316356166
+143,y,item_description__100 ml,0.842521084316
+144,y,name__vault,0.839460699677
+145,y,item_description__jewelers,0.838452013789
+146,y,name__webkinz signature,0.838428790677
+147,y,item_description__sterling,0.838016219009
+148,y,name__chacos,0.837126715904
+149,y,name__ballerine,0.83627608646
+150,y,item_description__authenticity card,0.83504131019
+151,y,name__viseart,0.83084537082
+152,y,name__canada goose,0.830253516292
+153,y,name__private sale,0.829403734196
+154,y,item_description__edp,0.828977861794
+155,y,item_description__gb,0.828507399527
+156,y,item_description__controller and,0.825056909092
+157,y,item_description__upgraded,0.824948291647
+158,y,name__monat,0.824779603466
+159,y,item_description__downloaded,0.824505366335
+160,y,name__laserjet,0.824276190232
+161,y,name__t3i,0.819194168674
+162,y,category_name__sports & outdoors/golf/electronics,0.815984726683
+163,y,brand_name__alexander mcqueen,0.815916653837
+164,y,item_description__plus,0.81566360343
+165,y,item_description__installed,0.815389237148
+166,y,name__tenney,0.813934773517
+167,y,category_name__sports & outdoors/golf/men's golf clubs,0.813738349945
+168,y,category_name__other/musical instruments/wind & woodwind instruments,0.8130875925
+169,y,name__vuitton,0.811919985181
+170,y,name__bean boots,0.809993069108
+171,y,brand_name__johnny was,0.809410737684
+172,y,item_description__gig,0.80889922894
+173,y,item_description__hairline,0.808876856908
+174,y,name__vuitton eva,0.808523913242
+175,y,brand_name__alexander wang,0.807372602411
+176,y,name__keepall,0.805231920268
+177,y,item_description__150,0.804287700197
+178,y,name__fleo,0.80320634894
+179,y,item_description__dead stock,0.801845958071
+180,y,name__alienware,0.801614358023
+181,y,name__obagi,0.80134842255
+182,y,item_description__mobile,0.801141105393
+183,y,name__polo bear,0.800379153172
+184,y,item_description__sold out,0.79869117806
+185,y,name__moissanite,0.797541032133
+186,y,name__beachwaver,0.795143182909
+187,y,name__coach disney,0.794597103264
+188,y,item_description__with games,0.793566762129
+189,y,category_name__home/home appliances/air conditioners,0.79258369588
+190,y,name__apple watch,0.791016132918
+191,y,item_description__also includes,0.789955202233
+192,y,name__nmd_r1,0.788805250378
+193,y,brand_name__beach bunny,0.787689773612
+194,y,item_description__complete series,0.786218761037
+195,y,category_name__other/musical instruments/keyboards,0.784632640426
+196,y,name__wedding dress,0.78408142642
+197,y,name__ergobaby,0.784079102096
+198,y,category_name__electronics/computers & tablets/desktops & all-in-ones,0.783495407015
+199,y,name__cabas,0.779685880186
+200,y,item_description__seasons,0.778627041139
+201,y,category_name__sports & outdoors/golf/golf bags,0.777921491944
+202,y,name__nena,0.776002702364
+203,y,item_description__1tb,0.775759268562
+204,y,item_description__canisters,0.773823921475
+205,y,item_description__250,0.771547377348
+206,y,item_description__discussed,0.770269453014
+207,y,name__stone cold,0.769372912246
+208,y,name__spectacles,0.76860792738
+209,y,item_description__wefts,0.76600530543
+210,y,name__midori,0.765575224417
+211,y,item_description__gtx,0.765544631263
+212,y,item_description__authentic chanel,0.764957377971
+213,y,item_description__refurbished,0.762413514886
+214,y,name__nintendo classic,0.762066452046
+215,y,item_description__carrier,0.762017119584
+216,y,name__moto 360,0.761340524898
+217,y,name__baseball irma,0.761006448368
+218,y,name__5mm bracelet,0.759661604566
+219,y,name__acacia,0.758414691884
+220,y,name__ring earrings,0.757980294314
+221,y,name__harlow,0.757351480587
+222,y,name__mcm tote,0.756094618033
+223,y,brand_name__frankie's bikinis,0.755277343752
+224,y,item_description__all,0.754598390114
+225,y,name__wedding gown,0.753194482756
+226,y,name__14kt,0.752793273435
+227,y,brand_name__comme des garcons,0.75244285724
+228,y,name__dunn tools,0.75196806849
+229,y,name__juice plus,0.751933486818
+230,y,item_description__dustbag,0.751389336694
+231,y,name__chaco,0.750474167354
+232,y,category_name__electronics/computers & tablets/laptops & netbooks,0.749825982624
+233,y,item_description__128,0.749530775755
+234,y,item_description__glitter gloss,0.747232622078
+235,y,item_description__protector on,0.746720534825
+236,y,name__ultra boost,0.746637909457
+237,y,item_description__some have,0.746623800289
+238,y,item_description__zales,0.746036838434
+239,y,item_description__350,0.745894602592
+240,y,name__true grit,0.745032213198
+241,y,category_name__electronics/cameras & photography/digital cameras,0.743954334619
+242,y,name__artis,0.743681563627
+243,y,name__jovani,0.742475485722
+244,y,brand_name__mikimoto,0.742432652921
+245,y,name__for 9300hailey,0.741913941709
+246,y,name__ring sling,0.741586670562
+247,y,item_description__core i5,0.741341906044
+248,y,"category_name__other/musical instruments/dj, electronic music & karaoke",0.739022824037
+249,y,item_description__200,0.738746040907
+250,y,name__stokke,0.737540054679
+251,y,name__shirley,0.73721188222
+252,y,name__128gb,0.736638556301
+253,y,name__hover board,0.736283899419
+254,y,name__robin jeans,0.734018152929
+255,y,name__silpada,0.733976899966
+256,y,item_description__tula,0.733730748566
+257,y,name__morgan dollar,0.733630177021
+258,y,name__fire emblem,0.733430456722
+259,y,item_description__automatic,0.732910663525
+260,y,name__banned,0.73211587013
+261,y,item_description__42ct,0.731945175709
+262,y,name__goyard,0.730648204281
+263,y,name__tc lot,0.729873765474
+264,y,name__neverfull,0.728360253395
+265,y,name__maui jim,0.727082586699
+266,y,name__redefine,0.725817587354
+267,y,item_description__box dust,0.725750127598
+268,y,item_description__campus,0.725572979366
+269,y,name__run disney,0.724674174205
+270,y,item_description__cricket,0.724291938262
+271,y,brand_name__céline,0.724253209746
+272,y,"category_name__electronics/tv, audio & surveillance/home surveillance",0.723050284748
+273,y,item_description__rare,0.722856329238
+274,y,name__lacefront,0.722393173088
+275,y,name__case charger,0.721651828251
+276,y,item_description__splitting,0.720639197442
+277,y,item_description__all authentic,0.720149702004
+278,y,name__amelia,0.718857195208
+279,y,item_description__bellami,0.717825702867
+280,y,name__lamborghini,0.717193639209
+281,y,item_description__att,0.716842173813
+282,y,brand_name__ysl yves saint laurent,0.715428461562
+283,y,name__littmann,0.715420011952
+284,y,name__chawa,0.714783672575
+285,y,name__bulova,0.712245155441
+286,y,item_description__wick candles,0.712174290349
+287,y,brand_name__valentino,0.710450848039
+288,y,item_description__controllers,0.710264942728
+289,y,name__teeki,0.709146640622
+290,y,name__paper mario,0.708360456139
+291,y,item_description__solid gold,0.708068943838
+292,y,brand_name__louis vuitton,0.707755176623
+293,y,name__chrono,0.707392391745
+294,y,name__heuer,0.707329722929
+295,y,item_description__power cord,0.706969273039
+296,y,name__prom dress,0.706777507805
+297,y,name__led sign,0.70602157209
+298,y,name__slime box,0.705773309722
+299,y,name__kitchenaid,0.705566106663
+300,y,name__14k,0.705147335886
+301,y,name__herve,0.702560010358
+302,y,name__nintendo switch,0.702393349483
+303,y,name__diamond wedding,0.702151377315
+304,y,name__life size,0.702113976598
+305,y,item_description__unlock,0.701332992482
+306,y,item_description__18 55mm,0.700055684762
+307,y,item_description__and charger,0.699918853302
+308,y,item_description__2018,0.699110326522
+309,y,item_description__16 gb,0.698321338466
+310,y,category_name__other/musical instruments/studio recording equipment,0.698108171517
+311,y,name__joyfolie,0.69751562542
+312,y,item_description__exclusives,0.697347167804
+313,y,name__burberry,0.696836373948
+314,y,name__vantel,0.696664796109
+315,y,name__jordan maroon,0.69631667045
+316,y,name__taryn,0.696244148053
+317,y,name__ps4 console,0.695986606278
+318,y,item_description__victorian,0.695835153747
+319,y,name__sutra,0.695141472073
+320,y,name__cartier,0.695048715057
+321,y,item_description__chronograph,0.691907173543
+322,y,name__vcr,0.691851906616
+323,y,name__jax,0.6918285587
+324,y,"category_name__electronics/car audio, video & gps/car speakers & systems",0.691302824394
+325,y,item_description__gg,0.689794496418
+326,y,name__neva,0.689630393561
+327,y,name__thermostat,0.688760735688
+328,y,name__longchamp,0.687769802049
+329,y,item_description__chase,0.687722448157
+330,y,item_description__the phone,0.687542733056
+331,y,name__fenty,0.687346653255
+332,y,item_description__most are,0.686479339434
+333,y,item_description__100ml,0.684307092979
+334,y,name__bandouliere,0.683357903321
+335,y,item_description__alterations,0.683140367362
+336,y,item_description__lash boost,0.679079808778
+337,y,name__irmas,0.677684171254
+338,y,name__timewise repair,0.676822145531
+339,y,item_description__1500,0.676635352762
+340,y,name__shaymin ex,0.676520817046
+341,y,name__hermes,0.675742408622
+342,y,name__canon eos,0.675582072073
+343,y,item_description__very rare,0.675420679563
+344,y,item_description__limbs are,0.675185867237
+345,y,item_description__10kt,0.674420722291
+346,y,item_description__htf,0.673747889611
+347,y,name__firestick,0.671766757339
+348,y,name__gucci flip,0.671710465632
+349,y,item_description__screen protector on,0.671113822619
+350,y,name__latisse,0.670892037764
+351,y,name__disney dooney,0.6704402156
+352,y,brand_name__seresto,0.670168698171
+353,y,item_description__stunning,0.670013098305
+354,y,name__abominable,0.669003832386
+355,y,name__keona,0.668108749061
+356,y,name__tot,0.66771587894
+357,y,brand_name__rock revival,0.66769703715
+358,y,item_description__125,0.66593801447
+359,y,name__go plus,0.664420409705
+360,y,item_description__watch sport,0.664414285113
+361,y,name__polaroid zip,0.664126961631
+362,y,item_description__priority,0.663997913248
+363,y,name__sherri hill,0.663837088434
+364,y,name__barbour,0.663276591984
+365,y,item_description__over 100,0.662412938123
+366,y,name__gucci,0.662028973114
+367,y,item_description__no icloud,0.661153179894
+368,y,name__insulin,0.661113042089
+369,y,name__as requested,0.660216568142
+370,y,item_description__insurance,0.659993010542
+371,y,name__imac,0.659866251283
+372,y,name__yeezy v2,0.659741115754
+373,y,name__olaplex,0.659660017074
+374,y,item_description__500,0.659524457517
+375,y,item_description__freddy,0.659428415359
+376,y,name__case popsocket,0.658735553823
+377,y,item_description__500 gb,0.658679533581
+378,y,item_description__dust bag,0.657892376486
+379,y,brand_name__moncler,0.6577160731
+380,y,brand_name__herve leger,0.657521698833
+381,y,category_name__electronics/video games & consoles/consoles,0.657372620777
+382,y,item_description__revolve,0.656958620463
+383,y,item_description__extremely rare,0.656287629865
+384,y,name__gift card,0.655755284175
+385,y,item_description__with authenticity,0.654984233312
+386,y,item_description__over rm,0.654411972745
+387,y,name__jogger city,0.653495957244
+388,y,name__otbt,0.653205363539
+389,y,item_description__64 gb,0.652335340362
+390,y,name__bond no,0.652105452426
+391,y,name__irobot,0.651845681221
+392,y,item_description__gift cards,0.651268333592
+393,y,name__rc car,0.650046135349
+394,y,brand_name__boys + arrows,0.64946702475
+395,y,name__birkenstocks,0.649278846223
+396,y,name__timbs,0.649105506048
+397,y,name__invicta,0.649081617818
+398,y,item_description__month supply,0.648982199476
+399,y,item_description__no low,0.648561719263
+400,y,name__rosetta stone,0.648348594309
+401,y,item_description__180,0.648327323547
+402,y,category_name__electronics/cameras & photography/camcorders,0.647761922693
+403,y,item_description__authentic louis,0.646804240925
+404,y,name__crew vest,0.646606576902
+405,y,name__fitbit blaze,0.645739137679
+406,y,name__reborn,0.645628315105
+407,y,category_name__electronics/cameras & photography/other,0.645591757292
+408,y,name__tivoli,0.645414807893
+409,y,item_description__vases,0.645133590443
+410,y,brand_name__harman kardon,0.645018792529
+411,y,item_description__intel,0.642401673292
+412,y,item_description__paperwork,0.641775334099
+413,y,item_description__coa,0.640918703201
+414,y,brand_name__scala,0.640601983912
+415,y,name__kanani,0.640313596343
+416,y,name__florentine,0.63981287094
+417,y,item_description__all nwt,0.639622743185
+418,y,brand_name__burberry brit,0.639522416704
+419,y,name__cricut expression,0.638924531076
+420,y,name__spell gypsy,0.63819891839
+421,y,item_description__engagement ring,0.637315361147
+422,y,item_description__travel case,0.637128870285
+423,y,name__conan,0.636980029485
+424,y,name__3ds xl,0.636436745222
+425,y,name__love lemons,0.635907769937
+426,y,item_description__lush kitchen,0.635878500466
+427,y,brand_name__chloé,0.634846870329
+428,y,item_description__camera bag,0.634689841012
+429,y,name__nuwave,0.634354520194
+430,y,name__ti 89,0.634200018026
+431,y,name__zuni,0.634130207441
+432,y,item_description__processor,0.633597709675
+433,y,item_description__taxes,0.633581958498
+434,y,item_description__locked,0.633529474846
+435,y,name__paisley skull,0.633523129482
+436,y,item_description__brand nike,0.633353296991
+437,y,item_description__boxes,0.632751779275
+438,y,item_description__certificate,0.631747323333
+439,y,name__blue life,0.63157314542
+440,y,name__celine,0.63090994212
+441,y,brand_name__bvlgari,0.630710940984
+442,y,item_description__sets,0.629916608047
+443,y,name__256 gb,0.629759299136
+444,y,item_description__white gold,0.629594464712
+445,y,item_description__sport band,0.629473285007
+446,y,brand_name__baby brezza,0.628648520688
+447,y,name__fire stick,0.628645705928
+448,y,name__1tb,0.626982645195
+449,y,name__blackmilk,0.626603926088
+450,y,item_description__lace front,0.626222140332
+451,y,name__balmain,0.625744655776
+452,y,name__oakleys,0.624167146403
+453,y,item_description__brand new,0.623867594208
+454,y,item_description__sweatshirts,0.623286446323
+455,y,brand_name__chloe,0.623268451449
+456,y,brand_name__maison martin margiela,0.622169716236
+457,y,item_description__total rm,0.62193662894
+458,y,brand_name__dior,0.621900337578
+459,y,name__heartgard,0.621441956242
+460,y,name__sarah,0.621265166216
+461,y,item_description__50 ml,0.620677236961
+462,y,item_description__runway,0.620280239888
+463,y,name__shakeology,0.619315212323
+464,y,item_description__altered,0.618762478352
+465,y,name__25x,0.618362178032
+466,y,category_name__men/shoes/boots,0.618236900924
+467,y,name__mumu,0.618204168051
+468,y,item_description__wifi,0.617766819178
+469,y,brand_name__omega,0.61746572478
+470,y,item_description__authentic louis vuitton,0.616821547492
+471,y,item_description__peruvian,0.615728699583
+472,y,name__10k,0.615583917971
+473,y,name__diamond band,0.615477518065
+474,y,name__pink luggage,0.614823601283
+475,y,name__128 gb,0.614664721217
+476,y,brand_name__robin's jeans,0.614211991649
+477,y,name__soulsilver,0.613882693454
+478,y,name__64oz,0.613870212953
+479,y,item_description__beautiful bag,0.613860274053
+480,y,category_name__other/musical instruments/brass instruments,0.61385585284
+481,y,name__carly,0.61379989298
+482,y,item_description__box charger,0.613086933614
+483,y,brand_name__breitling,0.612927019111
+484,y,name__valentino,0.612760152766
+485,y,name__dunn mixing,0.611797153473
+486,y,name__heartgold,0.611387484804
+487,y,name__lynnae,0.611298786917
+488,y,brand_name__frye,0.61067363446
+489,y,name__polaroid snap,0.610517760138
+490,y,name__malaysian,0.61042902523
+491,y,name__limelight,0.610336603181
+492,y,brand_name__bottega veneta,0.610108071258
+493,y,brand_name__stella mccartney,0.610077486653
+494,y,brand_name__hermes,0.610016307423
+495,y,name__filofax,0.609974001811
+496,y,name__littman,0.60996326547
+497,y,item_description__edt,0.609927965618
+498,y,name__lularoe lot,0.609725047278
+499,y,name__video doorbell,0.609387166029
+500,y,name__polymailers stickers,0.609333884058
+501,y,name__trx,0.608438349661
+502,y,brand_name__jovani,0.608264484857
+503,y,name__kerastase,0.607281581774
+504,y,name__burberry quilted,0.606734258916
+505,y,name__foams,0.606342077308
+506,y,name__beautycounter,0.605977087989
+507,y,name__cricut,0.60557396606
+508,y,item_description__intel core,0.60536189609
+509,y,brand_name__stetson,0.604656493886
+510,y,category_name__men/shoes/athletic,0.603698646107
+511,y,name__nes classic,0.603679943852
+512,y,item_description__dust bag box,0.603041102115
+513,y,name__paisley skulls,0.602928681145
+514,y,name__country heat,0.602903321104
+515,y,name__mario sunshine,0.602818398915
+516,y,name__dehydrator,0.601906038978
+517,y,name__softball bat,0.601617055841
+518,y,brand_name__orbit baby,0.601451619747
+519,y,brand_name__giuseppe zanotti,0.601068397161
+520,y,name__lonzo,0.600901331854
+521,y,name__trifexis,0.600738678466
+522,y,name__hopper,0.600683333935
+523,y,name__dymo,0.600647368851
+524,y,name__foreo,0.600579276757
+525,y,brand_name__goyard,0.600570792688
+526,y,item_description__thankful,0.599849617663
+527,y,name__diamond engagement,0.599417161365
+528,y,item_description__300,0.598658926058
+529,y,item_description__natural black,0.598553803779
+530,y,name__of cb,0.598482302853
+531,y,name__contra,0.598184747351
+532,y,item_description__foundations,0.598052754577
+533,y,name__von metal,0.598013348218
+534,y,item_description__body wave,0.597792331567
+535,y,item_description__newest,0.597452865232
+536,y,name__dojo,0.59736136773
+537,y,item_description__solo,0.596777272968
+538,y,name__sorel,0.596711690639
+539,y,name__ti 84,0.596575749395
+540,y,name__roomba,0.596474437585
+541,y,name__magnetic eyelashes,0.59540228313
+542,y,name__mailers stickers,0.59428877033
+543,y,name__yg,0.593808254489
+544,y,name__moschino,0.593611157834
+545,y,name__vionic,0.593343370614
+546,y,name__ps4 slim,0.593203811517
+547,y,item_description__authentication,0.592161213655
+548,y,name__longboard,0.591468958925
+549,y,name__nendoroid,0.591195941078
+550,y,brand_name__lovers + friends,0.591124027275
+551,y,name__fence,0.590894541535
+552,y,name__kenzo,0.590884740348
+553,y,name__dunn mix,0.590646923529
+554,y,item_description__chavonne11,0.590600789134
+555,y,name__artsy,0.588725219378
+556,y,name__sprayground,0.588645124842
+557,y,name__jaanuu,0.58757425167
+558,y,name__farsali,0.58734223135
+559,y,item_description__icloud,0.586905762675
+560,y,name__fear of,0.586259464635
+561,y,brand_name__proenza schouler,0.586234532405
+562,y,name__akai,0.586223734513
+563,y,item_description__irmas,0.586165781288
+564,y,item_description__money back,0.585915262091
+565,y,name__girl dolls,0.585853502749
+566,y,item_description__drone,0.584786125064
+567,y,brand_name__henri bendel,0.58444466317
+568,y,item_description__and controller,0.58428749654
+569,y,name__heiress,0.584178784622
+570,y,name__roll of,0.583287666588
+571,y,brand_name__bape,0.582977517657
+572,y,brand_name__canada goose,0.582660942718
+573,y,item_description__celine,0.582389918962
+574,y,name__charger case,0.582381602205
+575,y,brand_name__blue microphones,0.581658451577
+576,y,name__apple airpods,0.581454094374
+577,y,item_description__quart,0.58112659504
+578,y,name__fairytale,0.580920576829
+579,y,item_description__gta,0.58086127015
+580,y,name__watch series,0.580826242229
+581,y,name__decal sticker,0.580295733143
+582,y,name__sephora favorites,0.579751256085
+583,y,item_description__tubs,0.579727875637
+584,y,item_description__all cords,0.579707867495
+585,y,item_description__everything works,0.579706269705
+586,y,item_description__pedal,0.579304709426
+587,y,name__10kt,0.579257342794
+588,y,name__apple pencil,0.579080097438
+589,y,name__curl secret,0.578693096632
+590,y,item_description__bm,0.578575997331
+591,y,name__quay,0.578572348265
+592,y,name__patches for,0.578361287973
+593,y,name__case of,0.576924714501
+594,y,name__hover,0.576022625859
+595,y,name__session,0.575517961284
+596,y,name__tous,0.575010557287
+597,y,item_description__serious,0.57481800656
+598,y,item_description__ornate,0.574231810722
+599,y,item_description__pallets,0.574112315452
+600,y,name__burberry jacket,0.573773371567
+601,y,brand_name__blue life,0.573460419363
+602,y,item_description__signed,0.573325704823
+603,y,category_name__electronics/cell phones & accessories/cell phones & smartphones,0.573190089382
+604,y,name__birkenstock,0.573161809429
+605,y,brand_name__balmain,0.573111677626
+606,y,item_description__ultimate,0.572742083838
+607,y,name__eno,0.572166168531
+608,y,name__megazord,0.571875919896
+609,y,name__shadowless,0.571836280486
+610,y,item_description__saddle,0.571810623289
+611,y,brand_name__mackage,0.571537893197
+612,y,category_name__men/shoes/work & safety,0.570835776059
+613,y,name__frontal,0.569726756837
+614,y,name__case lanyard,0.56906985356
+615,y,category_name__electronics/cameras & photography/lenses & filters,0.568822806467
+616,y,name__braun series,0.568181220333
+617,y,name__tee leggings,0.566961030775
+618,y,category_name__men/shoes/fashion sneakers,0.566561147805
+619,y,name__mvmt,0.566524118327
+620,y,name__diamond bracelet,0.566228245821
+621,y,item_description__shining,0.566178064976
+622,y,item_description__bubble bar,0.565422052054
+623,y,name__os lot,0.564872955008
+624,y,name__copic markers,0.564719565851
+625,y,brand_name__shimano fishing,0.564669786334
+626,y,item_description__restorative,0.564315350734
+627,y,brand_name__sennheiser,0.562855289855
+628,y,item_description__gym pants,0.562707514827
+629,y,item_description__windows 10,0.562486991841
+630,y,name__train case,0.561830032818
+631,y,item_description__charger and,0.561699102041
+632,y,name__solo3,0.561371260957
+633,y,name__solo3 wireless,0.561371260957
+634,y,name__cabinet,0.561279649312
+635,y,item_description__patina,0.560758419942
+636,y,item_description__just received,0.56035137177
+637,y,category_name__other/musical instruments/bass guitars,0.560031752753
+638,y,category_name__other/automotive/motorcycle & powersports,0.559448452231
+639,y,item_description__vnds,0.559334136579
+640,y,item_description__box factory,0.558974528186
+641,y,item_description__wallets,0.558853807667
+642,y,name__11s,0.558565765677
+643,y,name__luxy,0.558546620459
+644,y,name__hero silver,0.558298805589
+645,y,name__natural love,0.557802640986
+646,y,name__64gb,0.557398879753
+647,y,name__timber,0.557305666581
+648,y,name__kith,0.557231037569
+649,y,brand_name__barbour,0.557018301535
+650,y,name__soul silver,0.556896554694
+651,y,name__flap bag,0.556618859414
+652,y,item_description__motherboard,0.556103852934
+653,y,category_name__home/home appliances/microwaves,0.555642634787
+654,y,name__transport,0.55541679527
+655,y,item_description__movement,0.554592150756
+656,y,name__jbl,0.553864109956
+657,y,name__charging case,0.553475956848
+658,y,name__hardy,0.55332120497
+659,y,item_description__receipts,0.553277840665
+660,y,name__breville,0.553091711274
+661,y,item_description__ram,0.552956137488
+662,y,name__charizard,0.552825659775
+663,y,item_description__comes with strap,0.552568820073
+664,y,name__forever stamps,0.552413811121
+665,y,item_description__10x,0.552384741087
+666,y,name__red bottom,0.552296527811
+667,y,name__keranique,0.552202609815
+668,y,item_description__colorblock,0.55162165311
+669,y,name__cheek parade,0.551199363169
+670,y,item_description__128 gb,0.550444346465
+671,y,name__naketano,0.550155523159
+672,y,name__100pcs,0.550150054161
+673,y,name__moroccanoil,0.549521819314
+674,y,item_description__plexus,0.54947586849
+675,y,brand_name__lanvin,0.549238134663
+676,y,name__yummibear,0.549110889719
+677,y,name__what the,0.549078033052
+678,y,name__mac book,0.548866794439
+679,y,item_description__guns,0.548847832957
+680,y,item_description__gps,0.548598160418
+681,y,item_description__renaissance,0.54825162146
+682,y,item_description__flor,0.548031826139
+683,y,item_description__enjoy them,0.547861048908
+684,y,item_description__also included,0.547504221279
+685,y,item_description__box factory sealed,0.547259717067
+686,y,name__chocolate shakeology,0.546920001187
+687,y,name__red wing,0.546622199183
+688,y,name__azur,0.546574070754
+689,y,item_description__black series,0.546482378601
+690,y,name__similac advance,0.546079082775
+691,y,name__pokemon heart,0.546054031774
+692,y,item_description__12s,0.546052279637
+693,y,name__dunn cake,0.546020944254
+694,y,item_description__everything,0.545385300338
+695,y,brand_name__beach riot,0.544811399551
+696,y,brand_name__mori lee,0.544663205582
+697,y,item_description__149,0.544644461985
+698,y,item_description__breathtaking,0.544444648586
+699,y,name__fox fur,0.544106513862
+700,y,item_description__no scratches no,0.54399986078
+701,y,name__32gb,0.543901813261
+702,y,item_description__dust bag and,0.543211348408
+703,y,item_description__bins,0.542749305298
+704,y,item_description__cleansers,0.542710462323
+705,y,brand_name__blanknyc,0.542698186581
+706,y,name__mackenzie,0.542593763013
+707,y,name__chanel espadrilles,0.54258002985
+708,y,item_description__the money,0.542290676023
+709,y,item_description__naked,0.542200458261
+710,y,name__travelers,0.541764711972
+711,y,name__ergo,0.541520896376
+712,y,name__microbiology,0.541494228706
+713,y,name__gold star,0.541466537347
+714,y,name__labels stickers,0.541044045404
+715,y,item_description__ml oz,0.540766991262
+716,y,name__alexander wang,0.540755502572
+717,y,item_description__containers,0.540514638783
+718,y,name__josephine,0.540356467864
+719,y,item_description__discontinued,0.540133849075
+720,y,name__ipod classic,0.540122509867
+721,y,name__riley luna,0.540006294575
+722,y,name__golf wang,0.539812750553
+723,y,name__harvey,0.539733708421
+724,y,brand_name__l.a.m.b.,0.53908312492
+725,y,item_description__pink items,0.538708906484
+726,y,item_description__not splitting,0.538541575772
+727,y,name__piyo,0.538467826145
+728,y,brand_name__tod's,0.538343813818
+729,y,item_description__hourglass,0.538098072349
+730,y,item_description__irons,0.537384085908
+731,y,item_description__bf,0.537361253414
+732,y,brand_name__allsaints,0.53711172617
+733,y,category_name__sports & outdoors/footwear/cleats,0.536949703551
+734,y,item_description__young living,0.536843494988
+735,y,name__diff,0.536835203116
+736,y,item_description__sight,0.536723980114
+737,y,item_description__55mm,0.536362798115
+738,y,item_description__malaysian,0.535962058533
+739,y,category_name__handmade/bags and purses/clutch,0.53558145586
+740,y,brand_name__wusthof,0.535279879188
+741,y,name__yru,0.535071852723
+742,y,name__ibloom,0.535017212876
+743,y,name__thermoball,0.534699958221
+744,y,item_description__sdcc,0.534591530617
+745,y,name__gameboy micro,0.53416937801
+746,y,name__sticker sheets,0.534146322014
+747,y,item_description__virgin,0.534115856341
+748,y,item_description__pink medium,0.533762662376
+749,y,name__ferragamo,0.533574713048
+750,y,name__64 gb,0.533504658013
+751,y,item_description__all cables,0.53320215638
+752,y,name__bed in,0.532906661128
+753,y,name__popover,0.532797128081
+754,y,item_description__lot is,0.532557195551
+755,y,name__margiela,0.532364622523
+756,y,brand_name__elizabeth and james,0.532360972713
+757,y,name__jam 11,0.53232882398
+758,y,name__gig,0.532240963
+759,y,name__tb,0.532234828743
+760,y,category_name__other/musical instruments/guitars,0.531801833135
+761,y,brand_name__3.1 phillip lim,0.531756823316
+762,y,item_description__fenty,0.531713633984
+763,y,item_description__fps,0.531299978863
+764,y,name__bape hoodie,0.531236337889
+765,y,name__key pouch,0.531203608568
+766,y,name__flat screen,0.531030406607
+767,y,item_description__binder,0.53094958203
+768,y,name__seresto,0.530899375152
+769,y,item_description__gift card,0.530806305262
+770,y,name__rm hold,0.530804306196
+771,y,name__owlicorn,0.530618905109
+772,y,name__oh cards,0.53042913689
+773,y,item_description__dent,0.530239107181
+774,y,name__edge unlocked,0.530113225393
+775,y,item_description__priority mail,0.530042201553
+776,y,item_description__sensors,0.529853584936
+777,y,name__wheelie,0.529617351614
+778,y,category_name__men/suits/two button,0.529601111763
+779,y,item_description__agate,0.529331829608
+780,y,item_description__in hand,0.529048955343
+781,y,name__drogon,0.528986711503
+782,y,item_description__18k gold,0.5289006821
+783,y,brand_name__breville,0.528014257165
+784,y,name__pageant,0.527727461079
+785,y,brand_name__kappa,0.5275966148
+786,y,brand_name__kenzo,0.527544896031
+787,y,item_description__paid,0.52741862929
+788,y,item_description__moschino,0.527367942007
+789,y,item_description__payment,0.527344996114
+790,y,category_name__vintage & collectibles/electronics/camera,0.526816040505
+791,y,item_description__items total,0.526571502618
+792,y,item_description__need money,0.526414234286
+793,y,name__uptempo,0.526044915325
+794,y,name__jly,0.525889786443
+795,y,item_description__with controller,0.525873307897
+796,y,name__pentax,0.525861757517
+797,y,item_description__550,0.525829523057
+798,y,item_description__and,0.525829373832
+799,y,item_description__major unicorn,0.525577861542
+800,y,item_description__tax,0.525436106783
+801,y,name__photo printer,0.525420530423
+802,y,item_description__perc,0.525263495449
+803,y,name__jordan royal,0.525152295836
+804,y,name__mimi,0.525012139693
+805,y,category_name__vintage & collectibles/bags and purses/formal,0.524953027869
+806,y,item_description__tier,0.524925446848
+807,y,item_description__nintendo brand,0.524790939319
+808,y,item_description__human hair,0.524601911383
+809,y,name__air 16gb,0.524017169163
+810,y,item_description__testers,0.523912647108
+811,y,name__t3,0.523692118757
+812,y,name__choker bodysuit,0.523201413049
+813,y,brand_name__acacia swimwear,0.522833282213
+814,y,item_description__the stones,0.522460412352
+815,y,brand_name__uppababy,0.522409449681
+816,y,name__flynn,0.521854380223
+817,y,item_description__with custom,0.521533484444
+818,y,name__posite,0.521303697733
+819,y,name__iclicker,0.521240600909
+820,y,name__card rm,0.521193926506
+821,y,name__pulitzer elsa,0.521132277477
+822,y,name__danskos,0.520882662534
+823,y,name__dot rebel,0.520632335399
+824,y,name__golden frieza,0.520617274085
+825,y,item_description__no alterations,0.520387775765
+826,y,item_description__controller with,0.519846041781
+827,y,name__lipscrub,-0.52025278403
+828,y,item_description__travel sized,-0.521280328469
+829,y,name__coupons,-0.521363227269
+830,y,name__14k solid,-0.522951079305
+831,y,name__polaroids,-0.523363551398
+832,y,item_description__and or,-0.523659985129
+833,y,name__dividers,-0.523963978543
+834,y,item_description__come with tracking,-0.52402335608
+835,y,name__coach and,-0.524098730114
+836,y,item_description__condoms,-0.524508739153
+837,y,name__hair tie,-0.524545435138
+838,y,item_description__no tracking,-0.524619063318
+839,y,item_description__any device,-0.524844841439
+840,y,name__version of,-0.525234112964
+841,y,item_description__and bundle,-0.525247447277
+842,y,name__palace pets,-0.525604556714
+843,y,name__credit card,-0.52567553993
+844,y,item_description__100 pure,-0.526212270185
+845,y,name__sunglass case,-0.52700658737
+846,y,name__lularoe dot,-0.527521994974
+847,y,name__shopping bags,-0.527963484384
+848,y,item_description__your apple,-0.528470067364
+849,y,name__flex band,-0.528638646105
+850,y,name__bluetooth smartwatch,-0.530172747105
+851,y,name__housing,-0.531724629409
+852,y,item_description__not full,-0.531807269106
+853,y,item_description__screen protector,-0.532298301815
+854,y,name__jovani prom,-0.53457087965
+855,y,item_description__pics thank you,-0.535925825677
+856,y,item_description__your apple watch,-0.537300954685
+857,y,name__kors top,-0.539009961861
+858,y,name__luggage tags,-0.539672592446
+859,y,item_description__iron on,-0.541348395084
+860,y,item_description__have brand,-0.541632971962
+861,y,item_description__listings rm,-0.541930538831
+862,y,name__eyeglasses case,-0.542219469459
+863,y,name__gold bond,-0.543572257116
+864,y,name__guitar pick,-0.544297831806
+865,y,item_description__measures wide,-0.546563243263
+866,y,name__yves saint,-0.549850690757
+867,y,name__camera strap,-0.551636932383
+868,y,item_description__closet sale,-0.551662048707
+869,y,name__iphone ipad,-0.551915701588
+870,y,name__free with,-0.552167046336
+871,y,name__18k rose,-0.552689401261
+872,y,name__fields mini,-0.552826340442
+873,y,name__prada handbag,-0.553596646982
+874,y,name__lace mask,-0.554305147822
+875,y,item_description__iphone charger,-0.557322084199
+876,y,name__auth sterling,-0.55824258994
+877,y,brand_name__o.b.,-0.558765327673
+878,y,name__for sarah,-0.559261488137
+879,y,name__co box,-0.559430140064
+880,y,name__luggage tag,-0.560962716324
+881,y,category_name__kids/safety/cabinet locks & straps,-0.562908235609
+882,y,item_description__white gold filled,-0.565576276446
+883,y,item_description__donated,-0.565734972765
+884,y,item_description__nars too,-0.566692973654
+885,y,item_description__nars too faced,-0.566692973654
+886,y,name__for tiffany,-0.567056761152
+887,y,name__watch case,-0.567348003967
+888,y,name__hair eyelashes,-0.568559270028
+889,y,item_description__decal,-0.56875810114
+890,y,name__buy please,-0.568859922632
+891,y,name__chain 14k,-0.571357557045
+892,y,brand_name__field & stream,-0.571477671744
+893,y,item_description__each additional,-0.572151282599
+894,y,name__postcards,-0.572249339806
+895,y,name__chanel foundation,-0.572378942295
+896,y,name__logo sticker,-0.572562615346
+897,y,name__for american,-0.572756392202
+898,y,name__wireless router,-0.573453608385
+899,y,name__hr charger,-0.574675029998
+900,y,name__alta bands,-0.575748821943
+901,y,brand_name__bausch & lomb,-0.576384693997
+902,y,name__sound machine,-0.579346178374
+903,y,name__6s premium,-0.580497301556
+904,y,name__starbucks gift,-0.581523752033
+905,y,category_name__vintage & collectibles/paper ephemera/postcard,-0.581555301048
+906,y,item_description__2ml,-0.581763025376
+907,y,item_description__mini size,-0.583739842186
+908,y,item_description__travel size,-0.584557813739
+909,y,category_name__handmade/accessories/pinback button,-0.585112346183
+910,y,name__chanel mascara,-0.586212665456
+911,y,name__for psp,-0.586694988242
+912,y,name__grips for,-0.586807261801
+913,y,name__pocketbac,-0.589062075343
+914,y,name__for macbook,-0.59227268976
+915,y,name__minifigure,-0.593248336144
+916,y,item_description__very used,-0.593578311312
+917,y,item_description__xbox one controller,-0.593884799939
+918,y,name__supreme uzi,-0.594275135132
+919,y,item_description__retail tags,-0.594544615171
+920,y,item_description__donruss,-0.595038890538
+921,y,name__luxe wigs,-0.599242072086
+922,y,name__console skin,-0.603243145745
+923,y,name__ed hardy,-0.603587649312
+924,y,name__watch band,-0.60368678018
+925,y,name__classic controller,-0.60723625411
+926,y,name__iphone 4s,-0.607548538351
+927,y,item_description__brass metal,-0.608268892182
+928,y,item_description__one case,-0.609964736677
+929,y,name__mini rainbow,-0.61034207768
+930,y,name__sport band,-0.610607735343
+931,y,item_description__jewelry pouch,-0.612698689199
+932,y,name__activation,-0.612938423351
+933,y,name__love spell,-0.617561946379
+934,y,item_description__seeds,-0.619463128192
+935,y,name__lightbar,-0.619753842915
+936,y,name__dust bags,-0.621775405539
+937,y,name__shoelaces,-0.623618744445
+938,y,item_description__empty,-0.623846925663
+939,y,item_description__for 00,-0.624282206996
+940,y,name__13 case,-0.62436687908
+941,y,item_description__not real,-0.626292358369
+942,y,item_description__cards from,-0.631489945283
+943,y,name__tv remote,-0.635151334641
+944,y,name__smart cover,-0.638429504794
+945,y,name__lg g2,-0.644281607364
+946,y,name__wax cubes,-0.644827642966
+947,y,item_description__cheap,-0.653749725489
+948,y,name__samsung phone,-0.660623988276
+949,y,name__ps4 xbox,-0.661512752097
+950,y,name__boxes and,-0.664098791438
+951,y,item_description__to bundle,-0.664899206234
+952,y,name__sticker,-0.666107330412
+953,y,item_description__flash drive,-0.66767159577
+954,y,name__carnival games,-0.669625625862
+955,y,name__flip phone,-0.672268289774
+956,y,item_description__will bundle,-0.673006374226
+957,y,name__plus box,-0.687685903659
+958,y,name__shopping bag,-0.695157080559
+959,y,name__tracfone,-0.695911484746
+960,y,name__controller grips,-0.695996337841
+961,y,item_description__x13,-0.69840551306
+962,y,name__charge band,-0.700114366985
+963,y,item_description__sample,-0.700451199971
+964,y,name__inch case,-0.705987500778
+965,y,item_description__upper deck,-0.707129345695
+966,y,item_description__hours of fun,-0.710623283181
+967,y,name__amiibo card,-0.717631625685
+968,y,name__lululemon astro,-0.720968803373
+969,y,name__alta band,-0.724618477938
+970,y,item_description__ultra fine,-0.727605394489
+971,y,item_description__14k gold plated,-0.732233162317
+972,y,item_description__vial,-0.736381658983
+973,y,name__air keyboard,-0.737149275886
+974,y,item_description__pieces rm,-0.738706898503
+975,y,name__vuitton box,-0.741060074256
+976,y,name__head penny,-0.753740701428
+977,y,item_description__ultra rare,-0.758444499797
+978,y,name__watch screen,-0.764817390844
+979,y,name__box only,-0.76804517921
+980,y,item_description__for apple watch,-0.76817270176
+981,y,name__personal listing,-0.773586693956
+982,y,item_description__rm items,-0.799675347708
+983,y,name__shoe box,-0.804980828184
+984,y,name__bear for,-0.823614574932
+985,y,name__new macbook,-0.839180160528
+986,y,name__dre tour,-0.84447648251
+987,y,name__dust bag,-0.844509113016
+988,y,name__vuitton lock,-0.850180781391
+989,y,name__dustbag,-0.852625146182
+990,y,name__ban case,-0.882952747556
+991,y,item_description__with stamp,-0.890368566905
+992,y,item_description__for fitbit,-0.927145494513
+993,y,item_description__tracking,-0.932798574543
+994,y,name__controller skin,-0.944404750678
+995,y,name__blaze band,-0.974237734461
+996,y,name__watch box,-0.989217633358
+997,y,name__vault boy,-1.02213019206
+998,y,name__lululemon bags,-1.06039346331
+999,y,item_description__envelope,-1.09219265471
