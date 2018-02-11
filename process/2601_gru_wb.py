@@ -140,6 +140,12 @@ def getFMFTRL():
     print('Test shape: ', test.shape)
     nrow_test = train.shape[0]  # -dftt.shape[0]
     
+    
+    print('[{}] Finished to load data'.format(time.time() - start_time))
+    print('Train shape: ', train.shape)
+    print('Test shape: ', test.shape)
+    nrow_test = train.shape[0]  # -dftt.shape[0]
+    
     dftt = train[(train.price < 1.0)]
     train = train.drop(train[(train.price < 1.0)].index)
     del dftt['price']
@@ -151,7 +157,7 @@ def getFMFTRL():
     submission = test[['test_id']]
     ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
     merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
-
+    
     #EXTRACT DEVELOPTMENT TEST
     trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
     
@@ -172,7 +178,8 @@ def getFMFTRL():
     
     to_categorical(merge)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
-       
+    
+    
     ''' 
     Regex characteristics - carat, gb/tb, cpu
     '''
@@ -182,16 +189,6 @@ def getFMFTRL():
         for rgx_ in regexls:
             valsls = colvals.str.findall(rgx_, re.IGNORECASE)
             vals[vals==0] += pd.Series([int(v[0]) if len(set(v)) == 1 else 0 for v in valsls])[vals==0]
-        if filter_:
-            vals[~vals.isin(filter_)] = 0.
-        return vals
-    
-    def count_rgx_name(regexls, idx_, filter_ = None):
-        colvals = merge['name'][idx_]
-        vals = pd.Series(np.zeros(len(colvals)))
-        for rgx_ in regexls:
-            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
-            vals[vals==0] += pd.Series([int(v[0]) if len(v)!= 0 else 0 for v in valsls])[vals==0]
         if filter_:
             vals[~vals.isin(filter_)] = 0.
         return vals
@@ -222,12 +219,6 @@ def getFMFTRL():
     measures[ix_chk,3] = count_rgx(rgxls, ix_chk)
     
     
-    # cpu
-    
-    # oz
-    
-    # diamond 
-    #r"(\d+) karat ", r"(\d+) carat "
     
     '''
     Crossed columns
@@ -358,13 +349,7 @@ def getFMFTRL():
     print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
     
     lb = LabelBinarizer(sparse_output=True)
-    X_brand  = lb.fit_transform(merge['brand_name'])
-    X_memory = lb.fit_transform(merge['measure_memory'])
-    mask = np.array(np.clip(X_memory.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_memory = X_memory[:, mask]
-    X_gold   = lb.fit_transform(merge['measure_gold'])
-    mask = np.array(np.clip(X_gold.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_gold = X_gold[:, mask]
+    X_brand = lb.fit_transform(merge['brand_name'])
     print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
     
     X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
@@ -379,14 +364,12 @@ def getFMFTRL():
     '''
 
     print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_memory, X_gold)
+          X_name.shape, X_cat.shape, x_col.shape)
     sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_memory, X_gold)).tocsr()
+                           x_col)).tocsr()
 
     
     print('[{}] Create sparse merge completed'.format(time.time() - start_time))
-    
-    
     
     # Remove features with document frequency <=1
     print(sparse_merge.shape)
@@ -415,13 +398,13 @@ def getFMFTRL():
         else:
             break
         
+    
     print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
     if develop:
         predsfm = model.predict(X=valid_X)
         print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
         # 0.44532 
         # Full data 0.424681
-        # 0.419741
     
     
     predsFM = model.predict(X_test)
@@ -631,12 +614,14 @@ def fit_sequence(str_, tkn_, filt = True):
         labels.append(tk)
     return labels
 
-merge['gold'] = merge['measure_gold']/np.max(merge['measure_gold'])
-merge['name'][merge['gold']!=0] = merge['name'][merge['gold']!=0] + \
-                    ' '+merge['measure_gold'][merge['gold']!=0].astype(int).astype(str)+'k'
-merge['name'][merge['measure_memory']!=0] = merge['name'][merge['measure_memory']!=0] + \
-                    ' '+merge['measure_memory'][merge['measure_memory']!=0].astype(int).astype(str)+'gb'
+valnm = merge['item_description']
+valnm = merge['name']
 
+for ii, let in zip(range(4), 'abcd'):
+    idx = measures[:,ii] != 0 
+    merge['item_description'][idx] = ['%s %s%s'%(s, int(val), let*3) for s, val \
+         in zip(merge['item_description'][idx], measures[idx,ii])]
+    
 tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().unique(), max_words = 800)
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
@@ -685,8 +670,7 @@ MAX_CATEGORY = np.max(merge.category.max())+1
 MAX_BRAND = np.max(merge.brand.max())+1
 merge.item_condition_id = merge.item_condition_id.astype(int)
 MAX_CONDITION = np.max(merge.item_condition_id.astype(int).max())+1
-
-
+    
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
@@ -703,8 +687,6 @@ def get_keras_data(dataset):
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
-        ,'gold': np.array(dataset[["gold"]])
-        #,'memory': np.array(dataset[["memory"]])
     }
     return X   
 
@@ -777,6 +759,7 @@ def rmsle(y, y_pred):
 dr = 0.1
 
 from keras.layers import GlobalMaxPooling1D
+from keras.layers import GlobalMaxPooling1D
 def get_model():
 
     ##Inputs
@@ -789,8 +772,6 @@ def get_model():
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[1], name="num_vars")
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
-    gold = Input(shape=[1], name="gold")
-    #memory = Input(shape=[1], name="memory")
     
     #Embeddings layers
     emb_size = 60
@@ -826,7 +807,6 @@ def get_model():
         , rnn_layer6
         , dense_l
         , num_vars
-        , gold#, memory
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
@@ -836,7 +816,7 @@ def get_model():
     
     #model
     model = Model([name, brand, ntk, item_desc, dense_name, item_desc_rev
-                   , category_name_split, gold
+                   , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
@@ -848,7 +828,7 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 merge.reset_index(drop=True, inplace=True)
 dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
 densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
-#del merge, densemrg
+# del merge, densemrg
 gc.collect()
 
 epochs = 2
@@ -874,7 +854,6 @@ val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvali
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-
 for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
@@ -897,8 +876,8 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
                     , max_queue_size=1 
                     , verbose=2)[tst_sorted_ix.argsort()])
     print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
-y_pred = sum(y_pred_epochs[:])/len(y_pred_epochs[:])
-yspred = sum(yspred_epochs[:])/len(yspred_epochs[:])
+y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
+yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
 # Bagged Epoch 5 rmsle 0.429088545511
 print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))

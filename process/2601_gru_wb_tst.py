@@ -1,30 +1,25 @@
 # encoding=utf8  
-import lightgbm as lgb
 import sys  
 #reload(sys)  
 #sys.setdefaultencoding('utf8')
-import os, math, gc, time, random
+import os, math, gc, time, random, csv
 start_time = time.time()
 import numpy as np
 from numba import jit
 from collections import Counter
-from scipy.sparse import csr_matrix, hstack
+from scipy.sparse import csr_matrix, hstack, vstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
 from nltk.stem import PorterStemmer
+from nltk.corpus import stopwords
 import pandas as pd
 import tensorflow as tf
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
-from keras.preprocessing.text import Tokenizer
 import multiprocessing as mp
 def _get_session():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     return tf.Session(config=config)
 _get_session()
-from keras.preprocessing.sequence import pad_sequences
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from keras.layers import Input, Dropout, Dense, BatchNormalization, \
     Activation, concatenate, GRU, Embedding, Flatten, Bidirectional, \
     MaxPooling1D, Conv1D, Add, Reshape, Lambda
@@ -33,34 +28,22 @@ from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping#, TensorBoa
 from keras import backend as K
 from keras import optimizers
 from keras import initializers
-from keras.utils import plot_model
+from keras.preprocessing.sequence import pad_sequences
 import warnings
 warnings.simplefilter(action='ignore')
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import LabelBinarizer, LabelEncoder, MinMaxScaler, StandardScaler
 from sklearn.model_selection import train_test_split
-import lightgbm as lgb
 import psutil
 
 #Add https://www.kaggle.com/anttip/wordbatch to your kernel Data Sources, 
 #until Kaggle admins fix the wordbatch pip package installation
 sys.path.insert(0, '../input/wordbatch/wordbatch/')
 import wordbatch
-
 from wordbatch.extractors import WordBag, WordHash
 from wordbatch.models import FTRL, FM_FTRL
-
-from nltk.corpus import stopwords
-start_time = time.time()
 from time import gmtime, strftime
 
-
-
-NUM_BRANDS = 4500
-NUM_CATEGORIES = 1200
-
-develop = False
-develop= True
 
 def cpuStats():
         print(sys.version)
@@ -109,158 +92,136 @@ def to_categorical(dataset):
     dataset['subcat_2'] = dataset['subcat_2'].astype('category')
     dataset['item_condition_id'] = dataset['item_condition_id'].astype('category')
 
+def prep_brand_name(df):
+    # Add brand name to name
+    ix = (df['brand_name']==df['brand_name']) & (~df['brand_name'].str.lower().fillna('ZZZZZZ').isin(df['name'].str.lower()))
+    df['name'][ix] = df['brand_name'][ix] + ' ' + df['name'][ix]
+    return df['name']
 
-# Define helpers for text normalization
-stopwords = {x: 1 for x in stopwords.words('english')}
-non_alphanums = re.compile(u'[^A-Za-z0-9]+')
+def cross_columns(x_cols):
+    """simple helper to build the crossed columns in a pandas dataframe
+    """
+    crossed_columns = dict()
+    colnames = ['_'.join(x_c) for x_c in x_cols]
+    for cname, x_c in zip(colnames, x_cols):
+        crossed_columns[cname] = x_c
+    return crossed_columns
 
+def reduce_mem_usage(props):
+    start_mem_usg = props.memory_usage().sum() / 1024**2 
+    print("Memory usage of properties dataframe is :",start_mem_usg," MB")
+    NAlist = [] # Keeps track of columns that have missing values filled in. 
+    for col in props.columns:
+        if props[col].dtype.name not in ['object', 'category']:  # Exclude strings
+            
+            # Print current column type
+            print("******************************")
+            print("Column: ",col)
+            print("dtype before: ",props[col].dtype)
+            
+            # make variables for Int, max and min
+            IsInt = False
+            mx = props[col].max()
+            mn = props[col].min()
+            
+            # Integer does not support NA, therefore, NA needs to be filled
+            if not np.isfinite(props[col]).all(): 
+                NAlist.append(col)
+                props[col].fillna(mn-1,inplace=True)  
+                   
+            # test if column can be converted to an integer
+            asint = props[col].fillna(0).astype(np.int64)
+            result = (props[col] - asint)
+            result = result.sum()
+            if result > -0.01 and result < 0.01:
+                IsInt = True
+
+            
+            # Make Integer/unsigned Integer datatypes
+            if IsInt:
+                if mn >= 0:
+                    if mx < 255:
+                        props[col] = props[col].astype(np.uint8)
+                    elif mx < 65535:
+                        props[col] = props[col].astype(np.uint16)
+                    elif mx < 4294967295:
+                        props[col] = props[col].astype(np.uint32)
+                    else:
+                        props[col] = props[col].astype(np.uint64)
+                else:
+                    if mn > np.iinfo(np.int8).min and mx < np.iinfo(np.int8).max:
+                        props[col] = props[col].astype(np.int8)
+                    elif mn > np.iinfo(np.int16).min and mx < np.iinfo(np.int16).max:
+                        props[col] = props[col].astype(np.int16)
+                    elif mn > np.iinfo(np.int32).min and mx < np.iinfo(np.int32).max:
+                        props[col] = props[col].astype(np.int32)
+                    elif mn > np.iinfo(np.int64).min and mx < np.iinfo(np.int64).max:
+                        props[col] = props[col].astype(np.int64)    
+            
+            # Make float datatypes 32 bit
+            else:
+                props[col] = props[col].astype(np.float32)
+            
+            # Print new column type
+            print("dtype after: ",props[col].dtype)
+            print("******************************")
+    
+    # Print final result
+    print("___MEMORY USAGE AFTER COMPLETION:___")
+    mem_usg = props.memory_usage().sum() / 1024**2 
+    print("Memory usage is: ",mem_usg," MB")
+    print("This is ",100*mem_usg/start_mem_usg,"% of the initial size")
+    return props
+
+x_cols = (
+          ['brand_name',  'item_condition_id_str'],
+          ['brand_name',  'subcat_1'],
+          ['brand_name',  'subcat_2'],
+          ['brand_name',  'general_cat'],
+          ['brand_name',  'shipping_str'],
+          ['shipping_str',  'item_condition_id_str'],
+          ['shipping_str',  'subcat_2'],
+          ['item_condition_id_str',  'subcat_2']          
+          )
 
 def normalize_text(text):
     return u" ".join(
         [x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split(" ")] \
          if len(x) > 1 and x not in stopwords])
 
-print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
-cpuStats()
-
-def getFMFTRL():
-    #os.chdir('/Users/dhanley2/Documents/mercari/data')
-    os.chdir('/home/darragh/mercari/data')
-    train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
-    test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
+def prepSparseTrain(moddict, filename, rowidx = None):
     
-    glove_file = '../feat/glove.6B.50d.txt'
-    threads = 8
-    save_dir = '../feat'
+    df = pd.read_csv(filename, sep='\t', encoding='utf-8')
     
+    if rowidx!=None:
+        df =  df.loc[rowidx]
     
     print('[{}] Finished to load data'.format(time.time() - start_time))
-    print('Train shape: ', train.shape)
-    print('Test shape: ', test.shape)
-    nrow_test = train.shape[0]  # -dftt.shape[0]
-    
-    dftt = train[(train.price < 1.0)]
-    train = train.drop(train[(train.price < 1.0)].index)
+    print('Data shape: ', df.shape)    
+    dftt = df[(df.price < 1.0)]
+    df = df.drop(df[(df.price < 1.0)].index)    
     del dftt['price']
-    nrow_train = train.shape[0]
-    # print(nrow_train, nrow_test)
-    y = np.log1p(train["price"])
-    merge = pd.concat([train, dftt, test])
-    merge['target'] = np.log1p(merge["price"])
-    submission = test[['test_id']]
-    ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
-    merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
-
-    #EXTRACT DEVELOPTMENT TEST
-    trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
+    nrow_df = df.shape[0]    
+    y = np.log1p(df["price"])    
+    df['target'] = np.log1p(df["price"])
     
-    del train
-    del test
-    gc.collect()
-    
-    merge['general_cat'], merge['subcat_1'], merge['subcat_2'] = \
-        zip(*merge['category_name'].apply(lambda x: split_cat(x)))
-    #merge.drop('category_name', axis=1, inplace=True)
-    print('[{}] Split categories completed.'.format(time.time() - start_time))
-    
-    handle_missing_inplace(merge)
+    # Start prepping df
+    df['name'] = prep_brand_name(df)
+    df['general_cat'], df['subcat_1'], df['subcat_2'] = \
+        zip(*df['category_name'].apply(lambda x: split_cat(x)))
+    print('[{}] df split categories completed.'.format(time.time() - start_time))    
+    handle_missing_inplace(df)
     print('[{}] Handle missing completed.'.format(time.time() - start_time))
-    
-    cutting(merge)
+    cutting(df)
     print('[{}] Cut completed.'.format(time.time() - start_time))
-    
-    to_categorical(merge)
+    to_categorical(df)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
-       
-    ''' 
-    Regex characteristics - carat, gb/tb, cpu
-    '''
-    def count_rgx(regexls, idx_, filter_ = None):
-        colvals = merge['name'][idx_] + ' ' +merge['item_description'][idx_]
-        vals = pd.Series(np.zeros(len(colvals)))
-        for rgx_ in regexls:
-            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
-            vals[vals==0] += pd.Series([int(v[0]) if len(set(v)) == 1 else 0 for v in valsls])[vals==0]
-        if filter_:
-            vals[~vals.isin(filter_)] = 0.
-        return vals
-    
-    def count_rgx_name(regexls, idx_, filter_ = None):
-        colvals = merge['name'][idx_]
-        vals = pd.Series(np.zeros(len(colvals)))
-        for rgx_ in regexls:
-            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
-            vals[vals==0] += pd.Series([int(v[0]) if len(v)!= 0 else 0 for v in valsls])[vals==0]
-        if filter_:
-            vals[~vals.isin(filter_)] = 0.
-        return vals
-    
-    # gold
-    measures = np.zeros((merge.shape[0], 4))
-    ix_chk = ((merge.name.str.contains('gold', case=False)) | \
-                (merge.item_description.str.contains('gold', case=False))) & \
-                (merge['subcat_1'] == 'Jewelry')
-    rgxls = [r"(\d+)k ", r"(\d+)kt ", r"(\d+)k.", r"(\d+)kt.", r"(\d+)k,", r"(\d+)kt,",
-             r"(\d+) k ", r"(\d+) kt", r"(\d+) k.", r"(\d+) kt.", r"(\d+) k,", r"(\d+) kt,"]
-    measures[ix_chk,0] = count_rgx(rgxls, ix_chk, filter_ = [10,12,14,16,18,20,21,22,23,24])
-    
-    # phone memory
-    ix_chk = (merge['subcat_2'] == 'Cell Phones & Smartphones') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,1] = count_rgx(rgxls, ix_chk)
-    
-    # console memory
-    ix_chk = (merge['subcat_2'] == 'Consoles') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,2] = count_rgx(rgxls, ix_chk)
-    
-    # computer memory
-    ix_chk = (merge['category_name'] == 'Electronics/Computers & Tablets/Laptops & Netbooks') | \
-        (merge['category_name'] == 'Electronics/Computers & Tablets/Desktops & All-In-Ones') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,3] = count_rgx(rgxls, ix_chk)
-    
-    
-    # cpu
-    
-    # oz
-    
-    # diamond 
-    #r"(\d+) karat ", r"(\d+) carat "
-    
-    '''
-    Crossed columns
-    '''
-    # my understanding on how to replicate what layers.crossed_column does. One
-    # can read here: https://www.tensorflow.org/tutorials/linear.
-    def cross_columns(x_cols):
-        """simple helper to build the crossed columns in a pandas dataframe
-        """
-        crossed_columns = dict()
-        colnames = ['_'.join(x_c) for x_c in x_cols]
-        for cname, x_c in zip(colnames, x_cols):
-            crossed_columns[cname] = x_c
-        return crossed_columns
-    
-    merge['item_condition_id_str'] = merge['item_condition_id'].astype(str)
-    merge['shipping_str'] = merge['shipping'].astype(str)
-    x_cols = (
-              ['brand_name',  'item_condition_id_str'],
-              ['brand_name',  'subcat_1'],
-              ['brand_name',  'subcat_2'],
-              ['brand_name',  'general_cat'],
-              #['brand_name',  'subcat_1',  'item_condition_id_str'],
-              #['brand_name',  'subcat_2',  'item_condition_id_str'],
-              #['brand_name',  'general_cat',  'item_condition_id_str'],
-              ['brand_name',  'shipping_str'],
-              ['shipping_str',  'item_condition_id_str'],
-              ['shipping_str',  'subcat_2'],
-              ['item_condition_id_str',  'subcat_2']          
-              )
+    df['item_condition_id_str'] = df['item_condition_id'].astype(str)
+    df['shipping_str'] = df['shipping'].astype(str)
     crossed_columns_d = cross_columns(x_cols)
     categorical_columns = list(
-        merge.select_dtypes(include=['object']).columns)
+        df.select_dtypes(include=['object']).columns)
     
     D = 2**30
     for k, v in crossed_columns_d.items():
@@ -268,172 +229,309 @@ def getFMFTRL():
         outls_ = []
         indicator = 0 
         for col in v:
-            outls_.append((np.array(merge[col].apply(hash)))%D + indicator)
+            outls_.append((np.array(df[col].apply(hash)))%D + indicator)
             indicator += 10**6
-        merge[k] = sum(outls_).tolist()
-    
-    '''
-    Count crossed cols
-    '''
+        df[k] = sum(outls_).tolist()
     cross_nm = [k for k in crossed_columns_d.keys()]
-    lb = LabelBinarizer(sparse_output=True)
-    x_col = lb.fit_transform(merge[cross_nm[0]])
+    moddict['cross_binarizer'] = {}
+    moddict['cross_binarizer'][cross_nm[0]] = LabelBinarizer(sparse_output=True)
+    moddict['cross_binarizer'][cross_nm[0]].fit(df[cross_nm[0]])
+    X_col = moddict['cross_binarizer'][cross_nm[0]].transform(df[cross_nm[0]])
     for i in range(1, len(cross_nm)):
-        x_col = hstack((x_col, lb.fit_transform(merge[cross_nm[i]])))
-    del(lb)
+        moddict['cross_binarizer'][cross_nm[i]] = LabelBinarizer(sparse_output=True)
+        moddict['cross_binarizer'][cross_nm[i]].fit(df[cross_nm[i]])
+        X_col = hstack((X_col, moddict['cross_binarizer'][cross_nm[i]].transform(df[cross_nm[i]])))
+        
+    print('[{}] Finished cross column binarizer'.format(time.time() - start_time))
+
+    moddict['wordbatch'] = {}
+    moddict['wordbatch']['name'] = wordbatch.WordBatch(normalize_text, 
+                                           extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
+                                                                "hash_size": 2 ** 29, "norm": None, "tf": 'binary',
+                                                                "idf": None, }), procs=4)
+    moddict['wordbatch']['name'].dictionary_freeze= True
+    moddict['wordbatch']['name'].fit(df['name'])
+    X_name = moddict['wordbatch']['name'].transform(df['name'])
+    moddict['wordbatch']['name_mask'] = np.array(np.clip(X_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    X_name = X_name[:, moddict['wordbatch']['name_mask']]
     
-    '''
-    Encode Original Strings
-    '''
-    '''
-    for col in ['item_description', 'name']:    
-        lb = LabelBinarizer(sparse_output=True)
-        if 'X_orig' not in locals():
-            X_orig = lb.fit_transform(merge[col].apply(hash))
-        else:
-            X_orig = hstack((X_orig, lb.fit_transform(merge[col].apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['item_description']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['brand_name']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['subcat_2']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['brand_name']+merge['name']+merge['item_description']).apply(hash))))
-    X_orig = X_orig.tocsr()
-    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 2, 0, 1), dtype=bool)]
-    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 5000, 1, 0), dtype=bool)]    
-    print ('Shape of original hash', X_orig.shape)
-    X_orig = X_orig.tocoo()
-    '''
-    gc.collect()
-    cpuStats()
+    print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
     
     
     '''
-    Hash name
+    start_time = time.time()    
+    moddict['wordbatch']['category'] = wordbatch.WordBatch(normalize_text, 
+                                            extractor=(WordBag, {"hash_ngrams": 4, "hash_ngrams_weights": [1.0, 1.0, 1.0, 1.0],
+                                                                  "hash_size": 2 ** 20, "norm": None, "tf": 'binary',
+                                                                  "idf": None,}), procs=8)
+    moddict['wordbatch']['category'].dictionary_freeze = True
+    moddict['wordbatch']['category'].fit(df["category_name"].str.replace('/', ' '))
+    X_cat = moddict['wordbatch']['category'].transform(df["category_name"].str.replace('/', ' '))
+    moddict['wordbatch']['category_mask'] = np.array(np.clip(X_cat.getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    X_cat = X_cat[:, moddict['wordbatch']['category_mask']]
+    print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
     '''
     
+    moddict['wordbatch']['category'] = wordbatch.WordBatch(normalize_text, 
+                                            extractor=(WordBag, {"hash_ngrams": 4, "hash_ngrams_weights": [1.0, 1.0, 1.0, 1.0],
+                                                                  "hash_size": 2 ** 20, "norm": None, "tf": 'binary',
+                                                                  "idf": None,}), procs=4)
+    moddict['wordbatch']['category'].dictionary_freeze = True
+    cats = pd.Series(categories).str.replace('/', ' ')
+    moddict['wordbatch']['category'].fit(cats)
+    X_cat_tmp = moddict['wordbatch']['category'].transform(cats)
+    moddict['wordbatch']['categorydict'] = dict([(c, X_cat_tmp.getrow(row)) for (c, row) in zip(cats.tolist(), range(len(cats)))])
+    X_cat = vstack(([moddict['wordbatch']['categorydict'][c] for c in df["category_name"].str.replace('/', ' ')]))
+    moddict['wordbatch']['category_mask'] = np.array(np.clip(X_cat.getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    X_cat = X_cat[:, moddict['wordbatch']['category_mask']]
+    print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
     
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
-                                                                  "hash_size": 2 ** 29, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    X_name = wb.fit_transform(merge['name'])
-    del(wb)
-    X_name = X_name[:, np.array(np.clip(X_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    moddict['count'] = {}
+    for col in ['general_cat', 'subcat_1', 'subcat_2']:
+        moddict['count'][col] = CountVectorizer()
+        moddict['count'][col].fit(df[col])
+    X_category1 = moddict['count']['general_cat'].transform(df['general_cat'])
+    X_category2 = moddict['count']['subcat_1'].transform(df['subcat_1'])
+    X_category3 = moddict['count']['subcat_2'].transform(df['subcat_2'])
+    print('[{}] Count vectorize `categories` completed.'.format(time.time() - start_time))
+    
+    moddict['wordbatch']['item_description']  = wordbatch.WordBatch(
+                                        normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
+                                       "hash_size": 2 ** 28, "norm": "l2", "tf": 1.0,
+                                       "idf": None}), procs=8)
+    moddict['wordbatch']['item_description'].dictionary_freeze= True
+    moddict['wordbatch']['item_description'].fit(df['item_description'])
+    X_description = moddict['wordbatch']['item_description'].transform(df['item_description'])
+    moddict['wordbatch']['item_description_mask'] = np.array(np.clip(X_description.getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    X_description = X_description[:, moddict['wordbatch']['item_description_mask'] ]
+    print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
+    
+    
+    moddict['binarizer'] = {}
+    for col in ['brand_name', 'item_condition_id', 'shipping']:
+        moddict['binarizer'][col] = LabelBinarizer(sparse_output=True)
+        moddict['binarizer'][col].fit(df[col])
+    X_brand = moddict['binarizer']['brand_name'].transform(df['brand_name'])
+    X_cond  = moddict['binarizer']['item_condition_id'].transform(df['item_condition_id'])
+    X_ship  = moddict['binarizer']['shipping'].transform(df['shipping'])
+    print('[{}] Label binarize `brand_name` and `dummies` completed.'.format(time.time() - start_time))
+
+    X_all = hstack((X_cond, X_ship, X_description, X_brand, X_category1, X_category2, X_category3, 
+                    X_name, X_cat, X_col)).tocsr()
+    
+    return df, X_all, y, moddict
+
+def prepSparseTest(moddict, filename, rowidx = None):
+    
+    df = pd.read_csv(filename, sep='\t', encoding='utf-8')
+    
+    if rowidx!=None:
+        df =  df.loc[rowidx]
+        if 'price' in df.columns:
+            y = np.log1p(df["price"])    
+            df['target'] = np.log1p(df["price"])
+    
+    # Start prepping df
+    df['name'] = prep_brand_name(df)
+    df['general_cat'], df['subcat_1'], df['subcat_2'] = \
+        zip(*df['category_name'].apply(lambda x: split_cat(x)))
+    print('[{}] df split categories completed.'.format(time.time() - start_time))    
+    handle_missing_inplace(df)
+    print('[{}] Handle missing completed.'.format(time.time() - start_time))
+    cutting(df)
+    print('[{}] Cut completed.'.format(time.time() - start_time))
+    to_categorical(df)
+    print('[{}] Convert categorical completed'.format(time.time() - start_time))
+    df['item_condition_id_str'] = df['item_condition_id'].astype(str)
+    df['shipping_str'] = df['shipping'].astype(str)
+    crossed_columns_d = cross_columns(x_cols)
+    categorical_columns = list(
+        df.select_dtypes(include=['object']).columns)
+    
+    D = 2**30
+    for k, v in crossed_columns_d.items():
+        print ('Crossed column ', k)
+        outls_ = []
+        indicator = 0 
+        for col in v:
+            outls_.append((np.array(df[col].apply(hash)))%D + indicator)
+            indicator += 10**6
+        df[k] = sum(outls_).tolist()
+    cross_nm = [k for k in crossed_columns_d.keys()]
+    X_col = moddict['cross_binarizer'][cross_nm[0]].transform(df[cross_nm[0]])
+    for i in range(1, len(cross_nm)):
+        X_col = hstack((X_col, moddict['cross_binarizer'][cross_nm[i]].transform(df[cross_nm[i]])))
+        
+    print('[{}] Finished cross column binarizer'.format(time.time() - start_time))
+    
+    X_name = moddict['wordbatch']['name'].transform(df['name'])
+    X_name = X_name[:, moddict['wordbatch']['name_mask']]
     print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
     
     '''
-    Hash category
+    X_cat = moddict['wordbatch']['category'].transform(df["category_name"].str.replace('/', ' '))
+    X_cat = X_cat[:, moddict['wordbatch']['category_mask']]
     '''
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
-                                                                  "hash_size": 2 ** 20, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    cat = merge["category_name"].str.replace('/', ' ')
-    X_cat = wb.fit_transform(cat)
-    del(wb)
-    X_cat = X_cat[:, np.array(np.clip(X_cat.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    X_cat = vstack(([moddict['wordbatch']['categorydict'][c] for c in df["category_name"].str.replace('/', ' ')]))
+    X_cat = X_cat[:, moddict['wordbatch']['category_mask']]
     print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
     
-    '''
-    Count category
-    '''
-    
-    wb = CountVectorizer()
-    X_category1 = wb.fit_transform(merge['general_cat'])
-    X_category2 = wb.fit_transform(merge['subcat_1'])
-    X_category3 = wb.fit_transform(merge['subcat_2'])
+    X_category1 = moddict['count']['general_cat'].transform(df['general_cat'])
+    X_category2 = moddict['count']['subcat_1'].transform(df['subcat_1'])
+    X_category3 = moddict['count']['subcat_2'].transform(df['subcat_2'])
     print('[{}] Count vectorize `categories` completed.'.format(time.time() - start_time))
     
-    # wb= wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 3, "hash_ngrams_weights": [1.0, 1.0, 0.5],
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
-                                                                  "hash_size": 2 ** 28, "norm": "l2", "tf": 1.0,
-                                                                  "idf": None})
-                             , procs=8)
-    wb.dictionary_freeze= True
-    X_description = wb.fit_transform(merge['item_description'])
-    del(wb)
-    X_description = X_description[:, np.array(np.clip(X_description.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    X_description = moddict['wordbatch']['item_description'].transform(df['item_description'])
+    X_description = X_description[:, moddict['wordbatch']['item_description_mask'] ]
     print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
     
-    lb = LabelBinarizer(sparse_output=True)
-    X_brand  = lb.fit_transform(merge['brand_name'])
-    X_memory = lb.fit_transform(merge['measure_memory'])
-    mask = np.array(np.clip(X_memory.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_memory = X_memory[:, mask]
-    X_gold   = lb.fit_transform(merge['measure_gold'])
-    mask = np.array(np.clip(X_gold.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_gold = X_gold[:, mask]
-    print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
     
-    X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
-                                          sparse=True).values)
+    X_brand = moddict['binarizer']['brand_name'].transform(df['brand_name'])
+    X_cond  = moddict['binarizer']['item_condition_id'].transform(df['item_condition_id'])
+    X_ship  = moddict['binarizer']['shipping'].transform(df['shipping'])
+    print('[{}] Label binarize `brand_name` and `dummies` completed.'.format(time.time() - start_time))
     
-    print('[{}] Get dummies on `item_condition_id` and `shipping` completed.'.format(time.time() - start_time))
-    '''
-    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_orig.shape)
-    sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_orig)).tocsr()
-    '''
+    print(X_cond.shape, X_ship.shape, X_description.shape, X_brand.shape, X_category1.shape, 
+                   X_category2.shape, X_category3.shape, X_name.shape, X_cat.shape, X_col.shape)
+    #((148254, 5), (148254, 1), (148254, 1443619), (148254, 4501), (148254, 14), 
+    # (148254, 143), (148254, 961), (148254, 365715), (148254, 5305), (148254, 82586))
+    
+    #    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
+    #      X_name.shape, X_cat.shape, x_col.shape)
+    #(2175894, 6) (2175894, 2040339) (2175894, 4501) (2175894, 14) (2175894, 143)
+    #(2175894, 977) (2175894, 529016) (2175894, 2662) (2175894, 97140)
 
-    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_memory, X_gold)
-    sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_memory, X_gold)).tocsr()
+    X_all = hstack((X_cond, X_ship, X_description, X_brand, X_category1, X_category2, X_category3, 
+                    X_name, X_cat, X_col)).tocsr()
+    
+    return df, X_all
 
-    
-    print('[{}] Create sparse merge completed'.format(time.time() - start_time))
-    
-    
-    
-    # Remove features with document frequency <=1
-    print(sparse_merge.shape)
-    mask = np.array(np.clip(sparse_merge.getnnz(axis=0) - 1, 0, 1), dtype=bool)
-    sparse_merge = sparse_merge[:, mask]
-    X = sparse_merge[:nrow_train]
-    X_test = sparse_merge[nrow_test:]
-    print(sparse_merge.shape)
-    
-    gc.collect()
-    if develop:
-        #train_X1, valid_X1, train_y1, valid_y1 = train_test_split(X, y, train_size=0.90, random_state=233)
-        train_X, valid_X, train_y, valid_y = X[trnidx], X[validx], y.values[trnidx], y.values[validx]
-
-    model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
-                    D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
-    
+def trainFMFTRL():
+    # Load Data
+    dftrain, X_train, y_train, moddict = prepSparseTrain({}, trn_file, trnidx)
+    dfvalid, X_valid                   = prepSparseTest(moddict, trn_file, validx)
+    # Train the model
+    modelfm = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=X_train.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
+                D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
     baseline = 1.
+    threshold = .0002
     for i in range(15):
-        model.fit(train_X , train_y , verbose=1)
-        predsfm = model.predict(X=valid_X)
-        score_ = rmsle(np.expm1(valid_y), np.expm1(predsfm))
+        modelfm.fit(X_train , dftrain.target.values, verbose=1)
+        predsfm = modelfm.predict(X=X_valid)
+        score_ = rmsle(np.expm1(dfvalid.target.values), np.expm1(predsfm))
         print("FM_FTRL dev RMSLE:", score_)
-        if score_ < baseline:
+        if score_ + threshold < baseline:
             baseline = score_
         else:
-            break
-        
-    print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
-    if develop:
-        predsfm = model.predict(X=valid_X)
-        print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
-        # 0.44532 
-        # Full data 0.424681
-        # 0.419741
+            break    
+        # 0.42919 with zeros in val
+        # 0.42160 removing zeros in val
+        # X_train.shape = (1333501, 1902850)
+        # ('FM_FTRL dev RMSLE:', 0.42850571762280409)
     
+    # Reduce the number of columns
+    keep_cols = ['train_id', 'name', 'item_condition_id', 'category_name', 'brand_name', 'price', \
+                'shipping', 'item_description', 'target', 'general_cat', 'subcat_1', 'subcat_2']
+    dftrain, dfvalid = dftrain[keep_cols], dfvalid[keep_cols]
     
-    predsFM = model.predict(X_test)
-    print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
-    
-    return merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm
+    return dftrain, dfvalid, y_train, moddict, modelfm, predsfm
 
-merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm = getFMFTRL()
-cpuStats()   
+def predictFMFTRL():
+
+    dftest , X_test = prepSparseTest(moddict, tst_file,  tstidx,)
+    predsFM = modelfm.predict(X_test)
+    print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
+        # Reduce the number of columns
+    keep_cols = ['test_id', 'name', 'item_condition_id', 'category_name', 'brand_name', \
+                'shipping', 'item_description', 'general_cat', 'subcat_1', 'subcat_2']
+    dftest =  dftest[keep_cols]
+    
+    return dftest, predsFM
+        
+    
+
+'''
+To do 
+Make the submission index for test
+'''
+
+'''
+Set params
+'''
+print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+cpuStats()
+
+develop = False
+develop= True
+glove_file = '../feat/glove.6B.50d.txt'
+threads = 4
+save_dir = '../feat'
+os.chdir('/home/darragh/mercari/data')
+trn_file = '../data/train.tsv'
+tst_file = '../data/test.tsv'
+
+'''
+Load all categories in train and test
+'''
+# Define helpers for text normalization
+stopwords = {x: 1 for x in stopwords.words('english')}
+non_alphanums = re.compile(u'[^A-Za-z0-9]+')
+NUM_BRANDS = 4500
+NUM_CATEGORIES = 1200
+categories = pd.concat([pd.read_table(trn_file, sep='\t', encoding='utf-8', usecols = [3]), \
+                        pd.read_table(tst_file, sep='\t', encoding='utf-8', usecols = [3])]) \
+                            ['category_name'].fillna(value='missing').unique()
+cpuStats()
+'''
+Train and test split
+'''
+trnidx, validx = train_test_split(range(sum(1 for line in open(trn_file))-1), random_state=233, train_size=0.90)
+tstidx = range(sum(1 for line in open(tst_file))-1)
+
+'''
+Train and predict FTRL
+'''
+dftrain, dfvalid, y_train, moddict, modelfm, predsfm = trainFMFTRL()
+gc.collect()
+cpuStats()
+dftest, predsFM = predictFMFTRL()
 gc.collect()
 cpuStats()
 
+'''
+Join train and test from GRU ***To be changed
+'''
+train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
+test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
+y = np.log1p(train["price"])    
+nrow_train = len(y)
+train['target'] = np.log1p(train["price"])
+merge = pd.concat([train, test])
+del train, test
+merge['name'] = prep_brand_name(merge)
+merge['general_cat'], merge['subcat_1'], merge['subcat_2'] = \
+        zip(*merge['category_name'].apply(lambda x: split_cat(x)))
+print('[{}] df split categories completed.'.format(time.time() - start_time))    
+handle_missing_inplace(merge)
+print('[{}] Handle missing completed.'.format(time.time() - start_time))
+cutting(merge)
+print('[{}] Cut completed.'.format(time.time() - start_time))
+to_categorical(merge)
+print('[{}] Convert categorical completed'.format(time.time() - start_time))
+
+
+'''
+nrow_train = dftrain.shape[0]
+nrow_valid = dfvalid.shape[0]
+nrow_test  = dftest.shape[0]
+merge = pd.concat([dftrain, dfvalid, dftest])
+submission = dftest[['test_id']]
+del dftrain
+del dfvalid
+del dftest
+gc.collect()
+cpuStats()
+'''
 
 
 '''
@@ -475,6 +573,7 @@ def replace_maps(sent):
     for k, v in tech_mapper.items():
         sent = sent.replace(k, v)
     return sent
+
 import multiprocessing as mp
 pool = mp.Pool(processes=4)
 for col in ['name', 'item_description']:
@@ -494,18 +593,7 @@ merge.brand_name[~merge.brand_name.isin(hi_brand_cts)] = '_lo_count_'
 merge['brand'] = le.fit_transform(merge.brand_name)
 del le
 
-'''
-print("Remove bogus characters...")
-@jit
-def get_characters():
-    characters = set()
-    for sent in train.name.unique():
-        for s in sent:
-            characters.add(s)
-    return characters
-all_chars = sorted(list(get_characters()))
-"".join(all_chars)
-'''
+
 
 special_pattern = re.compile( 
     u"([\u0101-\ufffd])|"  
@@ -532,7 +620,6 @@ print('[{}] Finished PROCESSING CATEGORICAL DATA...'.format(time.time() - start_
 
 
 toktok = ToktokTokenizer()
-porter = PorterStemmer()
 tokSentMap = {}
 def tokSent(sent):
     sent = sent.replace('/', ' ')
@@ -631,12 +718,6 @@ def fit_sequence(str_, tkn_, filt = True):
         labels.append(tk)
     return labels
 
-merge['gold'] = merge['measure_gold']/np.max(merge['measure_gold'])
-merge['name'][merge['gold']!=0] = merge['name'][merge['gold']!=0] + \
-                    ' '+merge['measure_gold'][merge['gold']!=0].astype(int).astype(str)+'k'
-merge['name'][merge['measure_memory']!=0] = merge['name'][merge['measure_memory']!=0] + \
-                    ' '+merge['measure_memory'][merge['measure_memory']!=0].astype(int).astype(str)+'gb'
-
 tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().unique(), max_words = 800)
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
@@ -661,6 +742,7 @@ merge.head()
 #EXTRACT DEVELOPTMENT TEST
 
 # Make a sparse matrix of the ids of words
+merge.reset_index(drop=True, inplace=True)
 merge_ids = posn_to_sparse(merge, embedding_map)
 # Get the dense layer input of the text
 densemrg = merge_ids.dot(embeddings_matrix)#.todense()
@@ -685,8 +767,7 @@ MAX_CATEGORY = np.max(merge.category.max())+1
 MAX_BRAND = np.max(merge.brand.max())+1
 merge.item_condition_id = merge.item_condition_id.astype(int)
 MAX_CONDITION = np.max(merge.item_condition_id.astype(int).max())+1
-
-
+    
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
@@ -703,8 +784,6 @@ def get_keras_data(dataset):
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
-        ,'gold': np.array(dataset[["gold"]])
-        #,'memory': np.array(dataset[["memory"]])
     }
     return X   
 
@@ -789,8 +868,6 @@ def get_model():
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[1], name="num_vars")
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
-    gold = Input(shape=[1], name="gold")
-    #memory = Input(shape=[1], name="memory")
     
     #Embeddings layers
     emb_size = 60
@@ -826,7 +903,6 @@ def get_model():
         , rnn_layer6
         , dense_l
         , num_vars
-        , gold#, memory
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
@@ -836,7 +912,7 @@ def get_model():
     
     #model
     model = Model([name, brand, ntk, item_desc, dense_name, item_desc_rev
-                   , category_name_split, gold
+                   , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
@@ -845,11 +921,15 @@ def get_model():
     
 print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 
+
 merge.reset_index(drop=True, inplace=True)
-dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
-densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
+dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_train:]
+densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_train:]
+#dtrain, dvalid, test = merge[:nrow_train], merge[nrow_train:(nrow_train+nrow_valid)], merge[-nrow_test:]
+#densetrn, denseval, densetst = densemrg[:nrow_train], densemrg[nrow_train:(nrow_train+nrow_valid)], densemrg[-nrow_test:]
 #del merge, densemrg
 gc.collect()
+cpuStats()
 
 epochs = 2
 batchSize = 512 * 4
@@ -866,7 +946,7 @@ model.fit_generator(
                     , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                     , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                     , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                    , verbose=1
+                    , verbose=2
                     )
 
 
@@ -874,7 +954,6 @@ val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvali
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-
 for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
@@ -884,7 +963,7 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
                         , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                         , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                         , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , verbose=1
+                        , verbose=2
                         )
     y_pred_epochs.append(model.predict_generator(
                     tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
@@ -897,11 +976,14 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
                     , max_queue_size=1 
                     , verbose=2)[tst_sorted_ix.argsort()])
     print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
-y_pred = sum(y_pred_epochs[:])/len(y_pred_epochs[:])
-yspred = sum(yspred_epochs[:])/len(yspred_epochs[:])
+y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
+yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
+# 0.43359
+
+merge.head()
 # Bagged Epoch 5 rmsle 0.429088545511
-print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))
+print("Bagged FM & Nnet", rmsle(dvalid.price.values, (np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5)  ))
 
 
 bag_preds = np.expm1(predsFM)*0.5 + np.expm1(yspred[:,0])*0.5  

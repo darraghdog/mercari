@@ -124,6 +124,7 @@ print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
 cpuStats()
 
+
 def getFMFTRL():
     #os.chdir('/Users/dhanley2/Documents/mercari/data')
     os.chdir('/home/darragh/mercari/data')
@@ -140,13 +141,14 @@ def getFMFTRL():
     print('Test shape: ', test.shape)
     nrow_test = train.shape[0]  # -dftt.shape[0]
     
-    dftt = train[(train.price < 1.0)]
-    train = train.drop(train[(train.price < 1.0)].index)
-    del dftt['price']
+    #dftt = train[(train.price < 1.0)]
+    #train = train.drop(train[(train.price < 1.0)].index)
+    #del dftt['price']
     nrow_train = train.shape[0]
     # print(nrow_train, nrow_test)
     y = np.log1p(train["price"])
-    merge = pd.concat([train, dftt, test])
+    # merge = pd.concat([train, dftt, test])
+    merge = pd.concat([train, test])
     merge['target'] = np.log1p(merge["price"])
     submission = test[['test_id']]
     ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
@@ -359,12 +361,6 @@ def getFMFTRL():
     
     lb = LabelBinarizer(sparse_output=True)
     X_brand  = lb.fit_transform(merge['brand_name'])
-    X_memory = lb.fit_transform(merge['measure_memory'])
-    mask = np.array(np.clip(X_memory.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_memory = X_memory[:, mask]
-    X_gold   = lb.fit_transform(merge['measure_gold'])
-    mask = np.array(np.clip(X_gold.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_gold = X_gold[:, mask]
     print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
     
     X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
@@ -379,9 +375,9 @@ def getFMFTRL():
     '''
 
     print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_memory, X_gold)
+          X_name.shape, X_cat.shape, x_col.shape)
     sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_memory, X_gold)).tocsr()
+                           x_col)).tocsr()
 
     
     print('[{}] Create sparse merge completed'.format(time.time() - start_time))
@@ -400,6 +396,8 @@ def getFMFTRL():
     if develop:
         #train_X1, valid_X1, train_y1, valid_y1 = train_test_split(X, y, train_size=0.90, random_state=233)
         train_X, valid_X, train_y, valid_y = X[trnidx], X[validx], y.values[trnidx], y.values[validx]
+        idx_ = train_y!=0
+        train_X, train_y                   = train_X[idx_], train_y[idx_]  
 
     model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
                     D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
@@ -419,9 +417,7 @@ def getFMFTRL():
     if develop:
         predsfm = model.predict(X=valid_X)
         print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
-        # 0.44532 
-        # Full data 0.424681
-        # 0.419741
+        # 0.427286
     
     
     predsFM = model.predict(X_test)

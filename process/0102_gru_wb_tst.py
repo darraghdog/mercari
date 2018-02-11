@@ -8,7 +8,7 @@ start_time = time.time()
 import numpy as np
 from numba import jit
 from collections import Counter
-from scipy.sparse import csr_matrix, hstack
+from scipy.sparse import csr_matrix, hstack, vstack
 import nltk, re
 from nltk.tokenize import ToktokTokenizer
 from nltk.stem import PorterStemmer
@@ -109,332 +109,343 @@ def to_categorical(dataset):
     dataset['subcat_2'] = dataset['subcat_2'].astype('category')
     dataset['item_condition_id'] = dataset['item_condition_id'].astype('category')
 
+def cross_columns(x_cols):
+    """simple helper to build the crossed columns in a pandas dataframe
+    """
+    crossed_columns = dict()
+    colnames = ['_'.join(x_c) for x_c in x_cols]
+    for cname, x_c in zip(colnames, x_cols):
+        crossed_columns[cname] = x_c
+    return crossed_columns
 
 # Define helpers for text normalization
 stopwords = {x: 1 for x in stopwords.words('english')}
 non_alphanums = re.compile(u'[^A-Za-z0-9]+')
 
+x_cols = (
+          ['brand_name',  'item_condition_id_str'],
+          ['brand_name',  'subcat_1'],
+          ['brand_name',  'subcat_2'],
+          ['brand_name',  'general_cat'],
+          ['brand_name',  'shipping_str'],
+          ['shipping_str',  'item_condition_id_str'],
+          ['shipping_str',  'subcat_2'],
+          ['item_condition_id_str',  'subcat_2']          
+          )
+
+crossed_columns_d = cross_columns(x_cols)
 
 def normalize_text(text):
     return u" ".join(
         [x for x in [y for y in non_alphanums.sub(' ', text).lower().strip().split(" ")] \
          if len(x) > 1 and x not in stopwords])
 
-print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
-cpuStats()
-
-def getFMFTRL():
-    #os.chdir('/Users/dhanley2/Documents/mercari/data')
-    os.chdir('/home/darragh/mercari/data')
-    train = pd.read_csv('../data/train.tsv', sep='\t', encoding='utf-8')
-    test = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')
-    
-    glove_file = '../feat/glove.6B.50d.txt'
-    threads = 8
-    save_dir = '../feat'
-    
-    
-    print('[{}] Finished to load data'.format(time.time() - start_time))
-    print('Train shape: ', train.shape)
-    print('Test shape: ', test.shape)
-    nrow_test = train.shape[0]  # -dftt.shape[0]
-    
-    dftt = train[(train.price < 1.0)]
-    train = train.drop(train[(train.price < 1.0)].index)
-    del dftt['price']
-    nrow_train = train.shape[0]
-    # print(nrow_train, nrow_test)
-    y = np.log1p(train["price"])
-    merge = pd.concat([train, dftt, test])
-    merge['target'] = np.log1p(merge["price"])
-    submission = test[['test_id']]
-    ix = (merge['brand_name']==merge['brand_name']) & (~merge['brand_name'].str.lower().fillna('ZZZZZZ').isin(merge['name'].str.lower()))
-    merge['name'][ix] = merge['brand_name'][ix] + ' ' +merge['name'][ix]
-
-    #EXTRACT DEVELOPTMENT TEST
-    trnidx, validx = train_test_split(range(train.shape[0]), random_state=233, train_size=0.90)
-    
-    del train
-    del test
+def prepFMFeatures(df):
+    ix = (df['brand_name']==df['brand_name']) & \
+                    (~df['brand_name'].str.lower().fillna('ZZZZZZ').isin(df['name'].str.lower()))
+    df['name'][ix] = df['brand_name'][ix] + ' ' + df['name'][ix]
+    cpuStats()
     gc.collect()
     
-    merge['general_cat'], merge['subcat_1'], merge['subcat_2'] = \
-        zip(*merge['category_name'].apply(lambda x: split_cat(x)))
-    #merge.drop('category_name', axis=1, inplace=True)
+    df['general_cat'], df['subcat_1'], df['subcat_2'] = \
+        zip(*df['category_name'].apply(lambda x: split_cat(x)))
     print('[{}] Split categories completed.'.format(time.time() - start_time))
     
-    handle_missing_inplace(merge)
+    handle_missing_inplace(df)
     print('[{}] Handle missing completed.'.format(time.time() - start_time))
     
-    cutting(merge)
+    cutting(df)
     print('[{}] Cut completed.'.format(time.time() - start_time))
     
-    to_categorical(merge)
+    to_categorical(df)
     print('[{}] Convert categorical completed'.format(time.time() - start_time))
-       
-    ''' 
-    Regex characteristics - carat, gb/tb, cpu
-    '''
-    def count_rgx(regexls, idx_, filter_ = None):
-        colvals = merge['name'][idx_] + ' ' +merge['item_description'][idx_]
-        vals = pd.Series(np.zeros(len(colvals)))
-        for rgx_ in regexls:
-            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
-            vals[vals==0] += pd.Series([int(v[0]) if len(set(v)) == 1 else 0 for v in valsls])[vals==0]
-        if filter_:
-            vals[~vals.isin(filter_)] = 0.
-        return vals
-    
-    def count_rgx_name(regexls, idx_, filter_ = None):
-        colvals = merge['name'][idx_]
-        vals = pd.Series(np.zeros(len(colvals)))
-        for rgx_ in regexls:
-            valsls = colvals.str.findall(rgx_, re.IGNORECASE)
-            vals[vals==0] += pd.Series([int(v[0]) if len(v)!= 0 else 0 for v in valsls])[vals==0]
-        if filter_:
-            vals[~vals.isin(filter_)] = 0.
-        return vals
-    
-    # gold
-    measures = np.zeros((merge.shape[0], 4))
-    ix_chk = ((merge.name.str.contains('gold', case=False)) | \
-                (merge.item_description.str.contains('gold', case=False))) & \
-                (merge['subcat_1'] == 'Jewelry')
-    rgxls = [r"(\d+)k ", r"(\d+)kt ", r"(\d+)k.", r"(\d+)kt.", r"(\d+)k,", r"(\d+)kt,",
-             r"(\d+) k ", r"(\d+) kt", r"(\d+) k.", r"(\d+) kt.", r"(\d+) k,", r"(\d+) kt,"]
-    measures[ix_chk,0] = count_rgx(rgxls, ix_chk, filter_ = [10,12,14,16,18,20,21,22,23,24])
-    
-    # phone memory
-    ix_chk = (merge['subcat_2'] == 'Cell Phones & Smartphones') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,1] = count_rgx(rgxls, ix_chk)
-    
-    # console memory
-    ix_chk = (merge['subcat_2'] == 'Consoles') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,2] = count_rgx(rgxls, ix_chk)
-    
-    # computer memory
-    ix_chk = (merge['category_name'] == 'Electronics/Computers & Tablets/Laptops & Netbooks') | \
-        (merge['category_name'] == 'Electronics/Computers & Tablets/Desktops & All-In-Ones') 
-    rgxls = [r"(\d+)gb ", r"(\d+) gb", r"(\d+)gb.", r"(\d+) gb.", r"(\d+)gb,", r"(\d+) gb,"]
-    measures[ix_chk,3] = count_rgx(rgxls, ix_chk)
-    
-    
-    # cpu
-    
-    # oz
-    
-    # diamond 
-    #r"(\d+) karat ", r"(\d+) carat "
-    
+    cpuStats()   
+    gc.collect()
     '''
     Crossed columns
     '''
-    # my understanding on how to replicate what layers.crossed_column does. One
-    # can read here: https://www.tensorflow.org/tutorials/linear.
-    def cross_columns(x_cols):
-        """simple helper to build the crossed columns in a pandas dataframe
-        """
-        crossed_columns = dict()
-        colnames = ['_'.join(x_c) for x_c in x_cols]
-        for cname, x_c in zip(colnames, x_cols):
-            crossed_columns[cname] = x_c
-        return crossed_columns
+
     
-    merge['item_condition_id_str'] = merge['item_condition_id'].astype(str)
-    merge['shipping_str'] = merge['shipping'].astype(str)
-    x_cols = (
-              ['brand_name',  'item_condition_id_str'],
-              ['brand_name',  'subcat_1'],
-              ['brand_name',  'subcat_2'],
-              ['brand_name',  'general_cat'],
-              #['brand_name',  'subcat_1',  'item_condition_id_str'],
-              #['brand_name',  'subcat_2',  'item_condition_id_str'],
-              #['brand_name',  'general_cat',  'item_condition_id_str'],
-              ['brand_name',  'shipping_str'],
-              ['shipping_str',  'item_condition_id_str'],
-              ['shipping_str',  'subcat_2'],
-              ['item_condition_id_str',  'subcat_2']          
-              )
-    crossed_columns_d = cross_columns(x_cols)
+    df['item_condition_id_str'] = df['item_condition_id'].astype(str)
+    df['shipping_str'] = df['shipping'].astype(str)
+    
     categorical_columns = list(
-        merge.select_dtypes(include=['object']).columns)
+        df.select_dtypes(include=['object']).columns)
     
-    D = 2**30
+    D = 2**22
     for k, v in crossed_columns_d.items():
         print ('Crossed column ', k)
         outls_ = []
         indicator = 0 
         for col in v:
-            outls_.append((np.array(merge[col].apply(hash)))%D + indicator)
+            outls_.append((np.array(df[col].apply(hash)))%D + indicator)
             indicator += 10**6
-        merge[k] = sum(outls_).tolist()
+        df[k] = np.array(sum(outls_).tolist()).astype(np.int32)
+    
+    return df
+
+
+print(strftime("%Y-%m-%d %H:%M:%S", gmtime()))    
+#os.chdir('/Users/dhanley2/Documents/mercari/data')
+os.chdir('/home/darragh/mercari/data')
+glove_file = '../feat/glove.6B.50d.txt'
+threads = 8
+save_dir = '../feat'
+trn_file = '../data/train.tsv'
+tst_file = '../data/test.tsv'
+cpuStats()
+moddict = {}
+
+categories = pd.concat([pd.read_table(trn_file, sep='\t', encoding='utf-8', usecols = [3]), \
+                        pd.read_table(tst_file, sep='\t', encoding='utf-8', usecols = [3])]) \
+                            ['category_name'].fillna(value='missing').unique()
+categories = pd.Series(categories ).str.replace('/', ' ').values
+cpuStats()
+
+def trainFMFTRL(moddict):
+
+    merge = pd.read_csv(trn_file, sep='\t', encoding='utf-8')
+    #test = pd.read_csv(tst_file, sep='\t', encoding='utf-8')
+    
+    print('[{}] Finished to load data'.format(time.time() - start_time))
+    print('Train shape: ', merge.shape)
+    
+    dftt = merge[(merge.price < 1.0)]
+    merge = merge.drop(merge[(merge.price < 1.0)].index)
+    del dftt['price']
+    nrow_train = merge.shape[0]
+    # print(nrow_train, nrow_test)
+    y = np.log1p(merge["price"])
+    merge = pd.concat([merge, dftt])
+    merge['target'] = np.log1p(merge["price"])
+    #EXTRACT DEVELOPTMENT TEST
+    trnidx, validx = train_test_split(range(merge[:nrow_train].shape[0]), random_state=233, train_size=0.90)
+    gc.collect()
+    cpuStats()
+    
+    merge = prepFMFeatures(merge)
+    cpuStats()
+    merge.head()
     
     '''
     Count crossed cols
     '''
     cross_nm = [k for k in crossed_columns_d.keys()]
-    lb = LabelBinarizer(sparse_output=True)
-    x_col = lb.fit_transform(merge[cross_nm[0]])
-    for i in range(1, len(cross_nm)):
-        x_col = hstack((x_col, lb.fit_transform(merge[cross_nm[i]])))
-    del(lb)
-    
-    '''
-    Encode Original Strings
-    '''
-    '''
-    for col in ['item_description', 'name']:    
-        lb = LabelBinarizer(sparse_output=True)
-        if 'X_orig' not in locals():
-            X_orig = lb.fit_transform(merge[col].apply(hash))
+    moddict['cross_cols'] = {}
+    for i in range(0, len(cross_nm)):
+        moddict['cross_cols'][cross_nm[i]] = LabelBinarizer(sparse_output=True)
+        moddict['cross_cols'][cross_nm[i]].fit(merge[cross_nm[i]])
+        if i == 0:
+            x_col = moddict['cross_cols'][cross_nm[i]].transform(merge[cross_nm[i]])
         else:
-            X_orig = hstack((X_orig, lb.fit_transform(merge[col].apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['item_description']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['brand_name']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['subcat_2']+merge['name']).apply(hash))))
-    X_orig = hstack((X_orig, lb.fit_transform((merge['brand_name']+merge['name']+merge['item_description']).apply(hash))))
-    X_orig = X_orig.tocsr()
-    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 2, 0, 1), dtype=bool)]
-    X_orig = X_orig[:, np.array(np.clip(X_orig.getnnz(axis=0) - 5000, 1, 0), dtype=bool)]    
-    print ('Shape of original hash', X_orig.shape)
-    X_orig = X_orig.tocoo()
-    '''
+            x_col = hstack((x_col, moddict['cross_cols'][cross_nm[i]].fit_transform(merge[cross_nm[i]])))
+        del merge[cross_nm[i]]
     gc.collect()
     cpuStats()
-    
     
     '''
     Hash name
     '''
-    
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
+    moddict['wb_name'] = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.5, 1.0],
                                                                   "hash_size": 2 ** 29, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
+                                                                  "idf": None, 'verbose' : 1,
                                                                   }), procs=8)
-    wb.dictionary_freeze= True
-    X_name = wb.fit_transform(merge['name'])
-    del(wb)
-    X_name = X_name[:, np.array(np.clip(X_name.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+    moddict['wb_name'].dictionary_freeze= True    
+    X_name = moddict['wb_name'].fit_transform(merge['name'])
+    moddict['wb_name_mask'] = np.where(X_name[:nrow_train].getnnz(axis=0) > 0)[0]
+    X_name = X_name[:, moddict['wb_name_mask']]
     print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
     
     '''
-    Hash category
-    '''
-    
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
+    Hash category #2
+    '''    
+    moddict['wb_cat'] = wordbatch.WordBatch(normalize_text, 
+                                            extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
                                                                   "hash_size": 2 ** 20, "norm": None, "tf": 'binary',
-                                                                  "idf": None,
-                                                                  }), procs=8)
-    wb.dictionary_freeze= True
-    cat = merge["category_name"].str.replace('/', ' ')
-    X_cat = wb.fit_transform(cat)
-    del(wb)
-    X_cat = X_cat[:, np.array(np.clip(X_cat.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+                                                                  "idf": None,}), procs=4)
+    moddict['wb_cat'].dictionary_freeze = True
+    ### This must be the full dataset
+    #cats = merge["category_name"].str.replace('/', ' ').unique()
+    moddict['wb_cat'].fit(categories)
+    X_cat_tmp = moddict['wb_cat'].transform(categories)
+    moddict['wb_cat_dict'] = dict([(c, X_cat_tmp.getrow(row)) for (c, row) in zip(categories.tolist(), range(len(categories)))])
+    X_cat = vstack(([moddict['wb_cat_dict'][c] for c in merge["category_name"].str.replace('/', ' ')]))
+    #moddict['wb_cat_mask'] = np.array(np.clip(X_cat[:nrow_train].getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    moddict['wb_cat_mask'] = np.where(X_cat[:nrow_train].getnnz(axis=0) > 0)[0]
+    X_cat = X_cat[:, moddict['wb_cat_mask'] ]
     print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
     
     '''
     Count category
     '''
     
-    wb = CountVectorizer()
-    X_category1 = wb.fit_transform(merge['general_cat'])
-    X_category2 = wb.fit_transform(merge['subcat_1'])
-    X_category3 = wb.fit_transform(merge['subcat_2'])
+    moddict['wb_cat_ctgc'] = CountVectorizer()
+    moddict['wb_cat_ctgc'].fit(merge['general_cat'])
+    X_category1 = moddict['wb_cat_ctgc'].transform(merge['general_cat'])
+    moddict['wb_cat_ctsc1'] = CountVectorizer()
+    moddict['wb_cat_ctsc1'].fit(merge['subcat_1'])
+    X_category2 = moddict['wb_cat_ctsc1'].transform(merge['subcat_1'])
+    moddict['wb_cat_ctsc2'] = CountVectorizer()
+    moddict['wb_cat_ctsc2'].fit(merge['subcat_2'])
+    X_category3 = moddict['wb_cat_ctsc2'].transform(merge['subcat_2'])
     print('[{}] Count vectorize `categories` completed.'.format(time.time() - start_time))
     
-    # wb= wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 3, "hash_ngrams_weights": [1.0, 1.0, 0.5],
-    wb = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 1.0],
-                                                                  "hash_size": 2 ** 28, "norm": "l2", "tf": 1.0,
+    moddict['wb_dscr'] = wordbatch.WordBatch(normalize_text, extractor=(WordBag, {"hash_ngrams": 2, "hash_ngrams_weights": [1.0, 0.6],
+                                                                  "hash_size": 2 ** 28, "norm": None, "tf": 'binary',
                                                                   "idf": None})
-                             , procs=8)
-    wb.dictionary_freeze= True
-    X_description = wb.fit_transform(merge['item_description'])
-    del(wb)
-    X_description = X_description[:, np.array(np.clip(X_description.getnnz(axis=0) - 1, 0, 1), dtype=bool)]
+                                                                    , procs=8)
+    moddict['wb_dscr'].dictionary_freeze= True
+    X_description = moddict['wb_dscr'].fit_transform(merge['name'] + ' ' + merge['item_description'])
+    #moddict['wb_dscr_mask'] = np.array(np.clip(X_description[:nrow_train].getnnz(axis=0) - 1, 0, 1), dtype=bool)
+    moddict['wb_dscr_mask'] = np.where(X_description[:nrow_train].getnnz(axis=0) > 0)[0]
+    X_description = X_description[:, moddict['wb_dscr_mask']]
     print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
     
-    lb = LabelBinarizer(sparse_output=True)
-    X_brand  = lb.fit_transform(merge['brand_name'])
-    X_memory = lb.fit_transform(merge['measure_memory'])
-    mask = np.array(np.clip(X_memory.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_memory = X_memory[:, mask]
-    X_gold   = lb.fit_transform(merge['measure_gold'])
-    mask = np.array(np.clip(X_gold.getnnz(axis=0) - 10**6, 1, 0), dtype=bool)
-    X_gold = X_gold[:, mask]
+    moddict['wb_brandname'] = LabelBinarizer(sparse_output=True)
+    moddict['wb_brandname'].fit(merge['brand_name'][:nrow_train])
+    X_brand = moddict['wb_brandname'].transform(merge['brand_name'])
     print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
     
-    X_dummies = csr_matrix(pd.get_dummies(merge[['item_condition_id', 'shipping']],
-                                          sparse=True).values)
+    moddict['wb_itemcond'] = LabelBinarizer(sparse_output=True)
+    moddict['wb_itemcond'].fit(merge['item_condition_id'][:nrow_train])
+    X_itemcond = moddict['wb_itemcond'].transform(merge['item_condition_id'])
+    print('[{}] Label binarize `item_condition_id` completed.'.format(time.time() - start_time))    
     
-    print('[{}] Get dummies on `item_condition_id` and `shipping` completed.'.format(time.time() - start_time))
-    '''
-    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_orig.shape)
-    sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_orig)).tocsr()
-    '''
+    moddict['wb_shipping'] = LabelBinarizer(sparse_output=True)
+    moddict['wb_shipping'].fit(merge['shipping'][:nrow_train])
+    X_shipping = moddict['wb_shipping'].transform(merge['shipping'])
+    print('[{}] Label binarize `shipping` completed.'.format(time.time() - start_time))    
+    
+    print(X_itemcond.shape, X_shipping.shape,  #X_dummies.shape, 
+          X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
+          X_name.shape, X_cat.shape, x_col.shape)
+    sparse_merge = hstack((X_itemcond, X_shipping, #X_dummies, 
+                           X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
+                           x_col)).tocsr()
+    
+    print('[{}] Create sparse merge completed'.format(time.time() - start_time))
+    
+    print 50*'-'
+    cpuStats()
+    print 50*'-'
+    # Remove features with document frequency <=1
+    print(sparse_merge.shape)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+    gc.collect()
+    sparse_merge, y = sparse_merge[:nrow_train], y[:nrow_train]
+    if develop:
+        train_X, valid_X, train_y, valid_y = sparse_merge[trnidx], \
+                                        sparse_merge[validx], y.values[trnidx], y.values[validx]
+    print 50*'*'
+    cpuStats()
+    print 50*'*'
+    model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
+                    D_fm=200, e_noise=0.0001, iters=6, inv_link="identity", threads=2) #iters=15
 
-    print(X_dummies.shape, X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape, X_memory, X_gold)
-    sparse_merge = hstack((X_dummies, X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col, X_memory, X_gold)).tocsr()
+    print 50*'!'
+    cpuStats()
+    print 50*'!'
+    
+    baseline = 1.
+    for i in range(1):
+        print 50*'-'
+        cpuStats()
+        print 50*'-'
+        model.fit(train_X , train_y , verbose=1)
+        #predsfm = model.predict(X=valid_X)
+        #score_ = rmsle(np.expm1(valid_y), np.expm1(predsfm))
+        #print("FM_FTRL dev RMSLE:", score_)
+        #if score_ < baseline - 0.0004:
+        #    baseline = score_
+        #else:
+        #    break
+        
+    moddict['FMmodel'] = model
+    
+    print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
+    if develop:
+        predsfm = moddict['FMmodel'].predict(X=valid_X)                                                                                                                                                 
+        print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
+    gc.collect()
+    
+    return merge, moddict, trnidx, validx, nrow_train, predsfm
+
+mergetrn, moddict, trnidx, validx, nrow_train, predsfm = trainFMFTRL(moddict)
+gc.collect()
+cpuStats()
+
+def predictFMFTRL(moddict):
+    mergetst = pd.read_csv('../data/test.tsv', sep='\t', encoding='utf-8')    
+    
+    print('[{}] Finished to load data'.format(time.time() - start_time))
+    nrow_test = mergetst .shape[0]  # -dftt.shape[0]
+    submission = mergetst[['test_id']]
+    mergetst = prepFMFeatures(mergetst)
+    cpuStats()
+    mergetst.head()
+    
+    '''
+    Count crossed cols
+    '''
+    cross_nm = [k for k in crossed_columns_d.keys()]
+    for i in range(0, len(cross_nm)):
+        if i == 0:
+            x_col = moddict['cross_cols'][cross_nm[i]].transform(mergetst[cross_nm[i]])
+        else:
+            x_col = hstack((x_col, moddict['cross_cols'][cross_nm[i]].fit_transform(mergetst[cross_nm[i]])))
+        del mergetst[cross_nm[i]]
+    gc.collect()
+    cpuStats()
+    
+    X_name = moddict['wb_name'].transform(mergetst['name'])
+    X_name = X_name[:, moddict['wb_name_mask']]
+    print('[{}] Vectorize `name` completed.'.format(time.time() - start_time))
+
+    X_cat = vstack(([moddict['wb_cat_dict'][c] for c in mergetst["category_name"].str.replace('/', ' ')]))
+    X_cat = X_cat[:, moddict['wb_cat_mask'] ]
+    print('[{}] Vectorize `category` completed.'.format(time.time() - start_time))
+    
+    X_category1 = moddict['wb_cat_ctgc'].transform(mergetst['general_cat'])
+    X_category2 = moddict['wb_cat_ctsc1'].transform(mergetst['subcat_1'])
+    X_category3 = moddict['wb_cat_ctsc2'].transform(mergetst['subcat_2'])
+    print('[{}] Count vectorize `categories` completed.'.format(time.time() - start_time))
+    
+    X_description = moddict['wb_dscr'].transform(mergetst['name'] + ' ' + mergetst['item_description'])
+    X_description = X_description[:, moddict['wb_dscr_mask']]
+    print('[{}] Vectorize `item_description` completed.'.format(time.time() - start_time))
+    
+    X_brand = moddict['wb_brandname'].transform(mergetst['brand_name'])
+    print('[{}] Label binarize `brand_name` completed.'.format(time.time() - start_time))
+    
+    X_itemcond = moddict['wb_itemcond'].transform(mergetst['item_condition_id'])
+    print('[{}] Label binarize `item_condition_id` completed.'.format(time.time() - start_time))    
+    
+    X_shipping = moddict['wb_shipping'].transform(mergetst['shipping'])
+    print('[{}] Label binarize `shipping` completed.'.format(time.time() - start_time))    
+    
+    print(X_itemcond.shape, X_shipping.shape,  #X_dummies.shape, 
+          X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
+          X_name.shape, X_cat.shape, x_col.shape)
+    X_test = hstack((X_itemcond, X_shipping, #X_dummies, 
+                           X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
+                           x_col)).tocsr()
 
     
     print('[{}] Create sparse merge completed'.format(time.time() - start_time))
     
-    
-    
-    # Remove features with document frequency <=1
-    print(sparse_merge.shape)
-    mask = np.array(np.clip(sparse_merge.getnnz(axis=0) - 1, 0, 1), dtype=bool)
-    sparse_merge = sparse_merge[:, mask]
-    X = sparse_merge[:nrow_train]
-    X_test = sparse_merge[nrow_test:]
-    print(sparse_merge.shape)
-    
-    gc.collect()
-    if develop:
-        #train_X1, valid_X1, train_y1, valid_y1 = train_test_split(X, y, train_size=0.90, random_state=233)
-        train_X, valid_X, train_y, valid_y = X[trnidx], X[validx], y.values[trnidx], y.values[validx]
-
-    model = FM_FTRL(alpha=0.01, beta=0.01, L1=0.00001, L2=0.1, D=sparse_merge.shape[1], alpha_fm=0.01, L2_fm=0.0, init_fm=0.01,
-                    D_fm=200, e_noise=0.0001, iters=1, inv_link="identity", threads=threads) #iters=15
-    
-    baseline = 1.
-    for i in range(15):
-        model.fit(train_X , train_y , verbose=1)
-        predsfm = model.predict(X=valid_X)
-        score_ = rmsle(np.expm1(valid_y), np.expm1(predsfm))
-        print("FM_FTRL dev RMSLE:", score_)
-        if score_ < baseline:
-            baseline = score_
-        else:
-            break
-        
-    print('[{}] Train ridge v2 completed'.format(time.time() - start_time))
-    if develop:
-        predsfm = model.predict(X=valid_X)
-        print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
-        # 0.44532 
-        # Full data 0.424681
-        # 0.419741
-    
-    
-    predsFM = model.predict(X_test)
+    predsFM = moddict['FMmodel'].predict(X_test)
     print('[{}] Predict FM_FTRL completed'.format(time.time() - start_time))
     
-    return merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm
+    return mergetst, predsFM
 
-merge, trnidx, validx, nrow_train, nrow_test, glove_file, predsFM, predsfm = getFMFTRL()
-cpuStats()   
+
+mergetst, predsFM = predictFMFTRL(moddict)
+
+del moddict
 gc.collect()
 cpuStats()
 
-
+mergetst.head()
 
 '''
 GRU
@@ -631,12 +642,6 @@ def fit_sequence(str_, tkn_, filt = True):
         labels.append(tk)
     return labels
 
-merge['gold'] = merge['measure_gold']/np.max(merge['measure_gold'])
-merge['name'][merge['gold']!=0] = merge['name'][merge['gold']!=0] + \
-                    ' '+merge['measure_gold'][merge['gold']!=0].astype(int).astype(str)+'k'
-merge['name'][merge['measure_memory']!=0] = merge['name'][merge['measure_memory']!=0] + \
-                    ' '+merge['measure_memory'][merge['measure_memory']!=0].astype(int).astype(str)+'gb'
-
 tok_raw_cat = myTokenizerFit(merge.category_name_split[:nrow_train].str.lower().unique(), max_words = 800)
 gc.collect()
 tok_raw_nam = myTokenizerFit(merge.name[:nrow_train].str.lower().unique(), max_words = 25000)
@@ -685,8 +690,7 @@ MAX_CATEGORY = np.max(merge.category.max())+1
 MAX_BRAND = np.max(merge.brand.max())+1
 merge.item_condition_id = merge.item_condition_id.astype(int)
 MAX_CONDITION = np.max(merge.item_condition_id.astype(int).max())+1
-
-
+    
 def get_keras_data(dataset):
     X = {
         'name': pad_sequences(dataset.seq_name, 
@@ -703,8 +707,6 @@ def get_keras_data(dataset):
                               maxlen=max([len(l) for l in dataset.seq_category_name_split]))
         ,'item_condition': np.array(dataset.item_condition_id)
         ,'num_vars': np.array(dataset[["shipping"]])
-        ,'gold': np.array(dataset[["gold"]])
-        #,'memory': np.array(dataset[["memory"]])
     }
     return X   
 
@@ -777,6 +779,7 @@ def rmsle(y, y_pred):
 dr = 0.1
 
 from keras.layers import GlobalMaxPooling1D
+from keras.layers import GlobalMaxPooling1D
 def get_model():
 
     ##Inputs
@@ -789,8 +792,6 @@ def get_model():
     item_condition = Input(shape=[1], name="item_condition")
     num_vars = Input(shape=[1], name="num_vars")
     dense_name = Input(shape=[densetrn.shape[1]], name="dense_name")
-    gold = Input(shape=[1], name="gold")
-    #memory = Input(shape=[1], name="memory")
     
     #Embeddings layers
     emb_size = 60
@@ -826,7 +827,6 @@ def get_model():
         , rnn_layer6
         , dense_l
         , num_vars
-        , gold#, memory
     ])
     main_l = Dropout(dr)(Dense(128,activation='relu') (main_l))
     main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
@@ -836,7 +836,7 @@ def get_model():
     
     #model
     model = Model([name, brand, ntk, item_desc, dense_name, item_desc_rev
-                   , category_name_split, gold
+                   , category_name_split #,category
                    , item_condition, num_vars], output)
     optimizer = optimizers.Adam()
     model.compile(loss='mse', 
@@ -848,7 +848,7 @@ print('[{}] Finished DEFINING MODEL...'.format(time.time() - start_time))
 merge.reset_index(drop=True, inplace=True)
 dtrain, dvalid, test = merge[:nrow_train].iloc[trnidx], merge[:nrow_train].iloc[validx], merge[nrow_test:]
 densetrn, denseval, densetst = densemrg[:nrow_train][trnidx], densemrg[:nrow_train][validx], densemrg[nrow_test:]
-#del merge, densemrg
+del merge, densemrg
 gc.collect()
 
 epochs = 2
@@ -866,7 +866,7 @@ model.fit_generator(
                     , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                     , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                     , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                    , verbose=1
+                    , verbose=2
                     )
 
 
@@ -874,7 +874,6 @@ val_sorted_ix = np.array(map_sort(dvalid["seq_item_description"].tolist(), dvali
 tst_sorted_ix = np.array(map_sort(test  ["seq_item_description"].tolist(), test  ["seq_name_token"].tolist()))
 y_pred_epochs = []
 yspred_epochs = []
-
 for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
     K.set_value(model.optimizer.lr, lr)
     model.fit_generator(
@@ -884,7 +883,7 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
                         , steps_per_epoch = int(np.ceil(dtrain.shape[0]*1./batchSize))
                         , validation_data = val_generator(denseval, dvalid, dvalid.target, batchSize)
                         , validation_steps = int(np.ceil(dvalid.shape[0]*1./batchSize))
-                        , verbose=1
+                        , verbose=2
                         )
     y_pred_epochs.append(model.predict_generator(
                     tst_generator(denseval[val_sorted_ix], dvalid.iloc[val_sorted_ix], batchSize)
@@ -897,8 +896,8 @@ for c, lr in enumerate([0.010, 0.009, 0.008]): # , 0.006, 0.007,
                     , max_queue_size=1 
                     , verbose=2)[tst_sorted_ix.argsort()])
     print("Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred_epochs[-1])))
-y_pred = sum(y_pred_epochs[:])/len(y_pred_epochs[:])
-yspred = sum(yspred_epochs[:])/len(yspred_epochs[:])
+y_pred = sum(y_pred_epochs)/len(y_pred_epochs)
+yspred = sum(yspred_epochs)/len(yspred_epochs)
 print("Bagged Epoch %s rmsle %s"%(epochs+c+1, eval_model(dvalid.price.values, y_pred)))
 # Bagged Epoch 5 rmsle 0.429088545511
 print("Bagged FM & Nnet", rmsle(dvalid.price.values, np.expm1(predsfm)*0.5 + np.expm1(y_pred[:,0])*0.5  ))
