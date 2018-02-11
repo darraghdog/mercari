@@ -586,16 +586,14 @@ def trainFMFTRL(moddict):
     
     print('Max length: %s'%(maxlen))
     
-    def create_model(embedding_dims=20, optimizer='adam'):
+    def create_model(embedding_dims=30, optimizer='adam'):
 
         mat  = Input(shape=[maxlen], name="mat")
-        emb_mat                 = Embedding(maxval+1, 20)(mat) 
+        emb_mat                 = Embedding(maxval+1, embedding_dims)(mat) 
         emb_mat  = GlobalAveragePooling1D()(emb_mat)
         
-        main_l = Dropout(dr)(Dense(512,activation='relu') (emb_mat))
-        main_l = BatchNormalization()(main_l)
-        main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
-        #main_l = BatchNormalization()(main_l)
+        main_l = Dropout(dr)(Dense(128,activation='relu') (emb_mat))
+        main_l = Dropout(dr)(Dense(32,activation='relu') (main_l))
         output = Dense(1,activation="linear") (main_l)
         
         model = Model([mat], output)
