@@ -575,61 +575,31 @@ def trainFMFTRL(moddict):
     def getList(line):
         return list(line.nonzero()[1])
     from tqdm import tqdm
-    '''
-    print(X_itemcond.shape, X_shipping.shape,  #X_dummies.shape, 
-          X_description.shape, X_brand.shape, X_category1.shape, X_category2.shape, X_category3.shape,
-          X_name.shape, X_cat.shape, x_col.shape)
-    sparse_merge = hstack((X_itemcond, X_shipping, #X_dummies, 
-                           X_description, X_brand, X_category1, X_category2, X_category3, X_name, X_cat,
-                           x_col)).tocsr()
-    '''
 
     train_ls = [list(line.nonzero()[1]) for line in tqdm(train_X)]
     valid_ls = [list(line.nonzero()[1]) for line in tqdm(valid_X)]
-    nm_ls = [list(line.nonzero()[1]) for line in tqdm(csc_matrix(X_name[:,np.where(X_name.getnnz(axis=0) > 5)[0]]))]
-    nm_ls = nm_ls[:nrow_train]
-    trainnm_ls = [nm_ls[ix] for ix in  tqdm(trnidx)]
-    validnm_ls = [nm_ls[ix] for ix in  tqdm(validx)]
-    #train_ls = [list(line.nonzero()[1]) for line in train_X]
-    #valid_ls = [list(line.nonzero()[1]) for line in valid_X]
     maxval =max(train_ls.max(), valid_ls.max())
     maxlen = max([len(l) for l in train_ls]) 
     train_ls = pad_sequences(sequences=train_ls, maxlen=maxlen)
     valid_ls = pad_sequences(sequences=valid_ls, maxlen=maxlen)
-    maxlennm = max([len(l) for l in trainnm_ls]) 
-    maxvalnm = max(trainnm_ls.max(), validnm_ls.max())
-    trainnm_ls = pad_sequences(sequences=trainnm_ls, maxlen=maxlennm)
-    validnm_ls = pad_sequences(sequences=validnm_ls, maxlen=maxlennm)
+
     
     print('Max length: %s'%(maxlen))
     
     def create_model(embedding_dims=20, optimizer='adam'):
-        #model = Sequential()
-        #model.add(Embedding(input_dim=train_X.shape[0], output_dim=embedding_dims))
-        #model.add(GlobalAveragePooling1D())
-        #model.add(Dense(1, activation='linear'))
-        #model.compile(loss='mse',
-        #              optimizer=optimizer)
-        name = Input(shape=[maxlennm], name="name")
+
         mat  = Input(shape=[maxlen], name="mat")
-        
-        #Embeddings layers
-        emb_name                = Embedding(maxvalnm+1, 20)(name) 
         emb_mat                 = Embedding(maxval+1, 20)(mat) 
+        emb_mat  = GlobalAveragePooling1D()(emb_mat)
         
-        emb_name = GlobalAveragePooling1D()(emb_name)
-        emb_mat = GlobalAveragePooling1D()(emb_mat)
-        
-        #main layer
-        main_l = concatenate([
-            emb_name
-            , emb_mat
-        ])
-        #output
+        main_l = Dropout(dr)(Dense(512,activation='relu') (emb_mat))
+        main_l = BatchNormalization()(main_l)
+        main_l = Dropout(dr)(Dense(64,activation='relu') (main_l))
+        #main_l = BatchNormalization()(main_l)
         output = Dense(1,activation="linear") (main_l)
         
-        #model
-        model = Model([name, mat], output)
+        model = Model([mat], output)
+        
         optimizer = optimizers.Adam()
         model.compile(loss='mse', 
                       optimizer=optimizer)
@@ -637,6 +607,7 @@ def trainFMFTRL(moddict):
     
     num_CPU = 1
     num_GPU = 0
+    
     
     config = tf.ConfigProto(intra_op_parallelism_threads=4,\
             inter_op_parallelism_threads=1, allow_soft_placement=True,\
@@ -647,24 +618,33 @@ def trainFMFTRL(moddict):
     epochs = 3
     batchSize = 512*16
     steps = (train_ls.shape[0]/batchSize+1)*epochs
-    lr_init, lr_fin = 0.020, 0.01
+    lr_init, lr_fin = 0.025, 0.01
     lr_decay  = (lr_init - lr_fin)/steps
     K.set_value(model.optimizer.lr, lr_init)
     K.set_value(model.optimizer.decay, lr_decay)
-    #K.set_value(model.optimizer.lr, .01)
     gc.collect()
 
-    hist = model.fit([trainnm_ls, train_ls], train_y,
+    hist = model.fit([train_ls], train_y,
                      batch_size=batchSize,
-                     validation_data=([validnm_ls, valid_ls], valid_y),
+                     validation_data=([valid_ls], valid_y),
                      epochs=epochs,
                      callbacks=[EarlyStopping(patience=2, monitor='val_loss')])
-    predsft = model.predict_proba(valid_ls)
+    
+    K.set_value(model.optimizer.lr, .01)
+    predsftls = []
+    for i in range(3):
+        hist = model.fit([trainnm_ls, train_ls, traincat_ls, trainrest_ls], train_y,
+                     batch_size=batchSize,
+                     validation_data=([validnm_ls, valid_ls, validcat_ls, validrest_ls], valid_y),
+                     epochs=1,
+                     callbacks=[EarlyStopping(patience=2, monitor='val_loss')])
+        predsftls.append(model.predict([validnm_ls, valid_ls, validcat_ls, validrest_ls]))
+    predsft = sum(predsftls)/len(predsftls)
     
     print("Fasttext dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsft)))
 
     print("FM_FTRL dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(predsfm)))
-    print("Bagged Fasttext dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(0.3*predsft + 0.7*np.expand_dims(predsfm,1))))
+    print("Bagged Fasttext dev RMSLE:", rmsle(np.expm1(valid_y), np.expm1(0.2*predsft + 0.8*np.expand_dims(predsfm,1))))
     
     return merge, moddict, trnidx, validx, nrow_train, predsfm
     
